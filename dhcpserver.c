@@ -9,6 +9,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <time.h>
+#include <ctype.h>
 
 enum op_types {
     BOOTREQUEST = 1,
@@ -173,7 +174,7 @@ enum {
 
 };
 
-char *option_names[256] = {
+char *dhcp_option_names[256] = {
 
     [PAD] "PAD",
     [END] "END",
@@ -254,6 +255,8 @@ char *option_names[256] = {
     
 };
 
+uint8_t option_magic[4] = { 0x63, 0x82, 0x53, 0x63 };
+
 typedef struct dhcp_option_ {
     uint8_t id;        // option id
     uint8_t len;       // option length
@@ -285,6 +288,206 @@ typedef struct {
     address_assoc *allocated; // list of allocated addresses
     address_assoc *pending;   // list of pending addresses
 } address_pool;
+
+/* Option-related function */
+
+uint8_t *serialize_option (uint8_t *p, dhcp_option *o)
+{
+    p[0] = o->id;
+    p[1] = o->len;
+    memcpy(p+2, o->data, o->len);
+
+    return p + 2 + o->len;
+}
+
+void * parse_long (char *s)
+{
+    long *l = malloc(sizeof(*l));
+    l = strtol(s, NULL, 0);
+    return l;
+}
+
+void * parse_string (char *s)
+{
+    return strdup(s);
+}
+
+void * parse_ip (char *s)
+{
+    struct sockaddr_in *ip = malloc(sizeof(*ip));
+
+    if (inet_aton(s, &ip->sin_addr) == 0) { // error: invalid IP address
+	free(ip);
+	return NULL;
+    }
+
+    return ip;
+}
+
+void * parse_mac (char *s)
+{
+    uint8_t *mac = malloc(6);
+    int i;
+
+    if (strlen(s) != 17 ||
+       s[2] != ':' || s[5] != ':' || s[8] != ':' || s[11] != ':' || s[14] != ':') {
+	free(mac);
+	return NULL; // error: invalid MAC address
+    }
+
+    if (!isxdigit(s[0]) || !isxdigit(s[1]) || !isxdigit(s[3]) || !isxdigit(s[4]) || 
+	!isxdigit(s[6]) || !isxdigit(s[7]) || !isxdigit(s[9]) || !isxdigit(s[10]) ||
+	!isxdigit(s[12]) || !isxdigit(s[13]) || !isxdigit(s[15]) || !isxdigit(s[16])) {
+	free(mac);
+	return NULL; // error: invalid MAC address
+    }
+
+    for (i = 0; i < 6; i++) {
+	long b = strtol(s+(3*i), NULL, 16);
+	mac[i] = (uint8_t) b;
+    }
+
+    mac;
+}
+
+/* parsers for config files */
+
+enum {
+    MAX_LINE = 2048
+};
+
+enum {
+    IP_ADDRESS,
+    POOL_START,
+    POOL_END,
+    LEASE_TIME
+};
+
+char *dhcp_config_names[3] = {
+    [IP_ADDRESS] "IP_ADDRESS",
+    [POOL_START] "POOL_START",
+    [POOL_END] "POOL_END",
+    [LEASE_TIME] "LEASE_TIME"   
+};
+
+/*
+ *  Token parser
+ *  
+ *  A token can be:
+ *  - a string, enclosed in double quotes (e.g. "foobar")
+ *  - a "function" name indicating the type of the data in parens
+ *    (e.g. ip(127.0.0.1), mac(00:00:00:00:00:00), etc...)
+ *  - an option identifier (e.g. POLICY_FILTER ...)
+ * 
+ *  Like strtok(3) only the FIRST TIME in_str must be not null.
+ *
+ *  Returned token must be free()d.
+ */
+char *get_token(char *in_str)
+{
+    static char *str = NULL;
+    static int i=0;
+
+    if (in_str) { //reset
+        str = in_str;
+        i = 0;
+    }
+
+    int start=i, j;
+    while (str && str[i]) {
+
+        switch (str[i]) {
+            case '\n':
+            case '\t':
+            case '\r':
+            case '(':
+            case ')':
+            case ' ':
+                if (start!=i) return strndup(str + start, i - start);
+                start++;
+                i++;
+                break;
+
+            case '"':
+                if (start!=i) return strndup(str + start, i - start);
+                for (j=1; str[i+j] && str[i+j] != '"'; j++); // read quoted string
+                i += j+1;
+                return strndup(str + start + 1, j - 1);
+
+            default:
+                i++;
+        }
+    }
+
+    if (start!=i) return strndup(str + start, i - start);
+
+    return NULL;
+}
+
+/* 
+ * parse input line
+ *
+ * returned value must be freed with free_parsed_line()
+ */
+char **parse_line(char *line)
+{
+    int len=10, count=0;
+    char **tokens = malloc(len * sizeof(char *));
+
+    tokens[count] = get_token(line);
+    count++;
+
+    while (tokens[count] = get_token(NULL)) {
+        count++;
+
+        if(count >= len) {
+            len *= 2;
+            tokens = realloc(tokens, len * sizeof(char *));
+        }
+    }
+
+    return tokens;
+}
+
+/* free parsed line */
+void free_parsed_line(char **tokens)
+{
+    int i;
+    for (i=0; tokens[i]; i++) free(tokens[i]);
+    free(tokens);
+}
+
+
+
+/* return the option number if token is a config option
+   otherwise return -1 */
+int token_is_dhcp_config (char *token)
+{
+    int i;
+
+    for (i=0; i < 256; i++) {
+	if (!strcmp(token, dhcp_config_names[i])) {
+	    return i;
+	}
+    }
+
+    return -1;
+}
+
+/* return the option number if token is a DHCP option
+   otherwise return -1 */
+int token_is_dhcp_option (char *token)
+{
+    int i;
+
+    for (i=0; i < 256; i++) {
+	if (!strcmp(token, dhcp_option_names[i])) {
+	    return i;
+	}
+    }
+
+    return -1;
+}
 
 int main (int argc, char *argv[])
 {
