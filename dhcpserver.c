@@ -268,50 +268,43 @@ typedef struct dhcp_option_ {
 /* Single address association */
 
 enum {
-    BOUND,
+    ASSOCIATED,
     PENDING,
-    UNBOUND
+    EXPIRED,
+    RELEASED
 };
 
-typedef struct address_assoc_ {
-    uint32_t address;   // address
-    uint8_t chaddr[16]; // client hw address
-    time_t assoc_time;  // time of association
-    time_t expire_time; // time of expiration
+typedef struct address_binding_ {
+    uint32_t address;     // address
+    uint8_t chaddr[16];   // client hw address
+    uint8_t cident[256];  // client identifier
+    
+    time_t assoc_time;    // time of association
+    time_t expire_time;   // time of expiration
+    int status;           // binding status
+    int flags;            // control flags
 
-    int status;         // bound, pending, or unbound
+    dhcp_option *options; // options for this association
 
-    struct address_assoc_ *next; // next address in list
-} address_assoc;
-
-/* Address pool */
-
-typedef struct {
-    uint32_t first;   // first address of the pool
-    uint32_t last;    // last address of the pool
-    uint32_t current; // current unallocated address
-
-    dhcp_option *options; // options for this pool
-
-    address_assoc *assocs; // list of associated addresses
-} address_pool;
+    struct address_binding_ *next; // next address in list
+} address_binding;
 
 /*
- * Global association tables.
+ * Global association pool.
  *
  * The (static or dynamic) associations tables of the DHCP server,
  * are maintained in this global structure.
  */
 
 struct {
+    uint32_t first;   // first address of the pool
+    uint32_t last;    // last address of the pool
+    uint32_t current; // current unallocated address
 
-    // static association table
-    address_assoc *statics;
+    dhcp_option *options; // options for this pool
 
-    // address pools
-    address_pool *pools;
-
-} tables;
+    address_binding *bindings; // list of associated addresses
+} pool;
 
 /* Option-related function */
 
@@ -384,14 +377,18 @@ enum {
     IP_ADDRESS,
     POOL_START,
     POOL_END,
-    LEASE_TIME
+    DEFAULT_LEASE_TIME,
+    MAX_LEASE_TIME,
+    PENDING_TIME
 };
 
 char *dhcp_config_names[3] = {
     [IP_ADDRESS] "IP_ADDRESS",
     [POOL_START] "POOL_START",
     [POOL_END] "POOL_END",
-    [LEASE_TIME] "LEASE_TIME"   
+    [DEFAULT_LEASE_TIME] "DEFAULT_LEASE_TIME"
+    [MAX_LEASE_TIME] "MAX_LEASE_TIME"
+    [PENDING_TIME] "PENDING_TIME"
 };
 
 /*
@@ -511,6 +508,128 @@ int token_is_dhcp_option (char *token)
     }
 
     return -1;
+}
+
+/*
+ * DHCP server functions
+ */
+
+dhcp_message *serve_dhcp_discover (dhcp_message *msg)
+{  
+    address_assoc *assoc = search_static_assoc(msg);
+
+    if (assoc) { // a static association has been configured for this client
+
+        log_info("Offer to '%s' of address '%s', current status '%s', %sexpired",
+                 str_mac(msg->chaddr), str_ip(assoc->address),
+                 str_status(assoc->status),
+                 assoc->expire_time < time() ? "" : "not ");
+            
+        if (assoc->expire_time < time()) assoc->status = PENDING;
+            
+        return prepare_dhcp_offer(msg, NULL, assoc);
+
+    }
+
+    else { // use dynamic pool
+
+        /* If an address is available, the new address
+           SHOULD be chosen as follows: */
+
+        assoc = search_dynamic_assoc(msg);
+
+        if (assoc) {
+
+            /* The client's current address as recorded in the client's current
+               binding, ELSE */
+
+            /* The client's previous address as recorded in the client's (now
+               expired or released) binding, if that address is in the server's
+               pool of available addresses and not already allocated, ELSE */
+
+            // TODO log
+            
+            return prepare_dhcp_offer(msg, tables.pool, assoc);
+
+        }
+
+
+        /* The address requested in the 'Requested IP Address' option, if that
+           address is valid and not already allocated, ELSE */
+
+        /* A new address allocated from the server's pool of available
+           addresses; the address is selected based on the subnet from which
+           the message was received (if 'giaddr' is 0) or on the address of
+           the relay agent that forwarded the message ('giaddr' when not 0). */
+
+        assoc = add_dynamic(msg);
+
+        return prepare_dhcp_offer(msg, tables.pool, assoc);
+
+    }   
+    
+}
+
+dhcp_message *serve_dhcp_request (dhcp_message *msg)
+{  
+    address_binding *binding = search_binding(msg);
+
+    if (binding && binding.status == ASSOCIATED) {
+
+        log_info("Offer to '%s' with already associated address '%s'",
+                 str_mac(msg->chaddr), str_ip(binding->address));
+
+        time_t lease_expiration, lease_time = requested_lease_time(msg);
+
+        if (lease_time && acceptable_lease_time(lease_time, msg)) {
+            lease_expiration = lease_time;
+        } else if (lease_time) {
+            lease_expiration = get_default_lease_time(msg);
+        } else {
+            lease_expiration = binding.lease_expiration; // FIXME
+        }
+        
+        return prepare_dhcp_offer(msg, NULL, binding, lease_expiration);
+
+    }
+
+    if (binding) {
+
+        log_info("Offer to '%s' with previous address '%s'",
+                 str_mac(msg->chaddr), str_ip(binding->address));
+
+    } else if (binding = search_desired_binding(msg)) {
+
+        log_info("Offer to '%s' the desired address '%s'",
+                 str_mac(msg->chaddr), str_ip(binding->address));
+
+    } else if (binding = search_available_binding(msg)) {
+
+        log_info("Offer to '%s' the available address '%s'",
+                 str_mac(msg->chaddr), str_ip(binding->address));
+
+    } else { 
+
+        log_error("No address to offer to '%s'",
+                  str_mac(msg->chaddr));
+
+        return NULL;
+    }
+
+    time_t lease_expiration, lease_time = requested_lease_time(msg);
+
+    if (lease_time && acceptable_lease_time(lease_time, msg)) {
+        lease_expiration = lease_time;
+    }
+        
+    else {
+        lease_expiration = get_default_lease_time(msg);
+    }
+
+    binding.flags |= PENDING;
+    binding.lease_expiration = get_default_pending_time(msg);
+
+    return prepare_dhcp_offer(msg, NULL, binding, lease_expiration);    
 }
 
 int main (int argc, char *argv[])
