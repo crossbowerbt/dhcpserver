@@ -267,11 +267,19 @@ typedef struct dhcp_option_ {
 
 /* Single address association */
 
+enum {
+    BOUND,
+    PENDING,
+    UNBOUND
+};
+
 typedef struct address_assoc_ {
     uint32_t address;   // address
     uint8_t chaddr[16]; // client hw address
     time_t assoc_time;  // time of association
     time_t expire_time; // time of expiration
+
+    int status;         // bound, pending, or unbound
 
     struct address_assoc_ *next; // next address in list
 } address_assoc;
@@ -285,9 +293,25 @@ typedef struct {
 
     dhcp_option *options; // options for this pool
 
-    address_assoc *allocated; // list of allocated addresses
-    address_assoc *pending;   // list of pending addresses
+    address_assoc *assocs; // list of associated addresses
 } address_pool;
+
+/*
+ * Global association tables.
+ *
+ * The (static or dynamic) associations tables of the DHCP server,
+ * are maintained in this global structure.
+ */
+
+struct {
+
+    // static association table
+    address_assoc *statics;
+
+    // address pools
+    address_pool *pools;
+
+} tables;
 
 /* Option-related function */
 
