@@ -9,7 +9,7 @@ IP_ADDRESS=`ifconfig $INTERFACE | awk '/inet /{ print $2 }'`
 NETWORK_MASK=`ifconfig $INTERFACE | awk '/netmask /{ print $4 }'`
 
 # get default gateway router
-DEFAULT_ROUTER=`route -n | grep $INTERFACE | awk '/UG/{print $2}'`
+DEFAULT_GATEWAY=`route -n | grep $INTERFACE | awk '/UG/{print $2}'`
 
 # user defined pool of addresses
 POOL_START='192.168.1.50'

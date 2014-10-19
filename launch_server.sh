@@ -3,7 +3,12 @@
 # load server configuration
 . config.sh
 
-# load static configurations
+# load static bindings
+for i in static/*; do
+    . "$i" # TODO: prefix each option with the client id...
+done
 
+# save list of static bindings
+STATIC_BINDINGS=`basename -a -s .sh static/* | tr '\n' '/'`
 
 ./dhcpserver
