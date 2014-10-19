@@ -4,7 +4,7 @@
 . config.sh
 
 # load static bindings
-for i in static/*; do
+for i in static/*.sh; do
     . "$i" # TODO: prefix each option with the client id...
 done
 

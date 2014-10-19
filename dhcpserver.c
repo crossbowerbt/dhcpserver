@@ -325,6 +325,73 @@ struct {
     address_binding *bindings; // list of associated addresses
 } pool;
 
+/*
+ * Create a new binding
+ * 
+ * The binding is added to the pool binding list,
+ * and a pointer to the binding is returned for further manipulations.
+ */
+
+address_binding *add_binding (uint32_t address, uint8_t *chaddr, int status, int flags)
+{
+    // fill binding
+
+    address_binding *binding = calloc(1, sizeof(*binding));
+
+    binding->address = address;
+    memcpy(binding->chaddr, chaddr, 6);
+    binding->status = status;
+    binding->flags = flags;
+
+    // add to binding list
+    
+    address_binding *tmp = pool.bindings;
+    
+    if (tmp == NULL) {
+	pool.bindings = binding;
+    }
+
+    else {
+	while (tmp->next) tmp = tmp->next;
+	tmp->next = binding;
+    }
+
+    return binding;
+}
+
+/*
+ * Delete a binding
+ */
+
+void remove_binding (uint8_t *chaddr)
+{
+    address_binding *tmp = pool.bindings;
+    
+    if (tmp == NULL) {
+	return;
+    }
+
+    else if (memcmp(tmp->chaddr, chaddr, 6) == 0) {
+	pool.bindings = tmp->next;
+	free(tmp);
+    }
+
+    else {
+	address_binding *prev = tmp;
+	tmp = tmp->next;
+
+	while (tmp && memcmp(tmp->chaddr, chaddr, 6) != 0) {
+	    prev = tmp;
+	    tmp = tmp->next;
+	}
+	
+	if (tmp == NULL) return;
+
+	prev->next = tmp->next;
+	free (tmp);
+    }
+}
+
 /* Option-related function */
 
 uint8_t *serialize_option (uint8_t *p, dhcp_option *o)
@@ -540,6 +607,112 @@ int token_is_dhcp_option (char *token)
 void load_global_config ()
 {
     uint32_t n; char *s;
+
+    // save server IP address
+
+    if (!(s = getenv("IP_ADDRESS"))) {
+	error("Could not obtain server IP address: check IP_ADDRESS in config.sh");
+	exit(1);
+    }
+
+    if ((n = inet_addr(s)) == INADDR_NONE) {
+	error("Invalid server IP address: check IP_ADDRESS in config.sh");
+	exit(1);
+    }
+
+    pool.server_id = ntohl(n);
+
+    // save network mask
+
+    if (!(s = getenv("NETWORK_MASK"))) {
+	error("Could not obtain network mask: check NETWORK_MASK in config.sh");
+	exit(1);
+    }
+
+    if ((n = inet_addr(s)) == INADDR_NONE) {
+	error("Invalid network mask: check NETWORK_MASK in config.sh");
+	exit(1);
+    }
+
+    pool.netmask = ntohl(n);
+
+    // save default gateway
+
+    if (!(s = getenv("DEFAULT_GATEWAY"))) {
+	error("Could not obtain default gateway: check DEFAULT_GATEWAY in config.sh");
+	exit(1);
+    }
+
+    if ((n = inet_addr(s)) == INADDR_NONE) {
+	error("Invalid default gateway: check DEFAULT_GATEWAY in config.sh");
+	exit(1);
+    }
+
+    pool.gateway = ntohl(n);
+
+    // save first IP address of the pool
+
+    if (!(s = getenv("POOL_START"))) {
+	error("Could not obtain first IP address of the pool: check POOL_START in config.sh");
+	exit(1);
+    }
+
+    if ((n = inet_addr(s)) == INADDR_NONE) {
+	error("Invalid first IP address of the pool: check POOL_START in config.sh");
+	exit(1);
+    }
+
+    pool.first = ntohl(n);
+    pool.current = pool.first;
+
+    // save last IP address of the pool
+
+    if (!(s = getenv("POOL_END"))) {
+	error("Could not obtain last IP address of the pool: check POOL_END in config.sh");
+	exit(1);
+    }
+
+    if ((n = inet_addr(s)) == INADDR_NONE) {
+	error("Invalid last IP address of the pool: check POOL_END in config.sh");
+	exit(1);
+    }
+
+    pool.last = ntohl(n);
+
+    // save default lease time
+
+    if (!(s = getenv("DEFAULT_LEASE_TIME"))) {
+	error("Could not obtain default lease time: check DEFAULT_LEASE_TIME in config.sh");
+	exit(1);
+    }
+
+    pool.default_lease_time = atoi(s);
+
+    // save max lease time
+
+    if (!(s = getenv("MAX_LEASE_TIME"))) {
+	error("Could not obtain max lease time: check MAX_LEASE_TIME in config.sh");
+	exit(1);
+    }
+
+    pool.max_lease_time = atoi(s);
+
+    // save pending time
+
+    if (!(s = getenv("PENDING_TIME"))) {
+	error("Could not obtain pending time: check PENDING_TIME in config.sh");
+	exit(1);
+    }
+
+    pool.pending_time = atoi(s);
+
+}
+
+void load_static_bindings ()
+{
+    uint32_t n; char *s;
+
+    // get list of
 
     // save server IP address
 
