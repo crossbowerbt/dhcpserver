@@ -288,7 +288,12 @@ typedef struct address_binding_ {
     uint8_t cident[256];  // client identifier
     
     time_t assoc_time;    // time of association
-    time_t expire_time;   // time of expiration
+    time_t lease_time;    // duration of lease
+
+    time_t default_lease_time; // default duration of a lease
+    time_t max_lease_time;     // max acceptable lease time
+    time_t pending_time;       // duration of a binding in the pending state
+
     int status;           // binding status
     int flags;            // binding flags
 
@@ -712,105 +717,33 @@ void load_static_bindings ()
 {
     uint32_t n; char *s;
 
-    // get list of
+    // get list of static bindings
 
-    // save server IP address
-
-    if (!(s = getenv("IP_ADDRESS"))) {
-	error("Could not obtain server IP address: check IP_ADDRESS in config.sh");
+    if (!(s = getenv("STATIC_BINDINGS"))) {
+	error("Could not obtain list of static bindings: check STATIC_BINDINGS in launch_server.sh");
 	exit(1);
     }
 
-    if ((n = inet_addr(s)) == INADDR_NONE) {
-	error("Invalid server IP address: check IP_ADDRESS in config.sh");
-	exit(1);
+    // for every static binding
+
+    s = strdup(s);
+
+    char *binding_name = strtok(s, "/");
+
+    while(binding_name != NULL) {
+
+	char var_name[256];
+	char *s2;
+
+	
+
+	snprintf(var_name, sizeof(var_name), "%s_%s", binding_name, "OPTION");
+
+
+	binding_name = strtok(NULL, " ");
     }
 
-    pool.server_id = ntohl(n);
-
-    // save network mask
-
-    if (!(s = getenv("NETWORK_MASK"))) {
-	error("Could not obtain network mask: check NETWORK_MASK in config.sh");
-	exit(1);
-    }
-
-    if ((n = inet_addr(s)) == INADDR_NONE) {
-	error("Invalid network mask: check NETWORK_MASK in config.sh");
-	exit(1);
-    }
-
-    pool.netmask = ntohl(n);
-
-    // save default gateway
-
-    if (!(s = getenv("DEFAULT_GATEWAY"))) {
-	error("Could not obtain default gateway: check DEFAULT_GATEWAY in config.sh");
-	exit(1);
-    }
-
-    if ((n = inet_addr(s)) == INADDR_NONE) {
-	error("Invalid default gateway: check DEFAULT_GATEWAY in config.sh");
-	exit(1);
-    }
-
-    pool.gateway = ntohl(n);
-
-    // save first IP address of the pool
-
-    if (!(s = getenv("POOL_START"))) {
-	error("Could not obtain first IP address of the pool: check POOL_START in config.sh");
-	exit(1);
-    }
-
-    if ((n = inet_addr(s)) == INADDR_NONE) {
-	error("Invalid first IP address of the pool: check POOL_START in config.sh");
-	exit(1);
-    }
-
-    pool.first = ntohl(n);
-    pool.current = pool.first;
-
-    // save last IP address of the pool
-
-    if (!(s = getenv("POOL_END"))) {
-	error("Could not obtain last IP address of the pool: check POOL_END in config.sh");
-	exit(1);
-    }
-
-    if ((n = inet_addr(s)) == INADDR_NONE) {
-	error("Invalid last IP address of the pool: check POOL_END in config.sh");
-	exit(1);
-    }
-
-    pool.last = ntohl(n);
-
-    // save default lease time
-
-    if (!(s = getenv("DEFAULT_LEASE_TIME"))) {
-	error("Could not obtain default lease time: check DEFAULT_LEASE_TIME in config.sh");
-	exit(1);
-    }
-
-    pool.default_lease_time = atoi(s);
-
-    // save max lease time
-
-    if (!(s = getenv("MAX_LEASE_TIME"))) {
-	error("Could not obtain max lease time: check MAX_LEASE_TIME in config.sh");
-	exit(1);
-    }
-
-    pool.max_lease_time = atoi(s);
-
-    // save pending time
-
-    if (!(s = getenv("PENDING_TIME"))) {
-	error("Could not obtain pending time: check PENDING_TIME in config.sh");
-	exit(1);
-    }
-
-    pool.pending_time = atoi(s);
+    free(s);
 
 }
 
