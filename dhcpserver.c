@@ -10,6 +10,7 @@
 #include <netdb.h>
 #include <time.h>
 #include <ctype.h>
+#include <regex.h>
 
 enum op_types {
     BOOTREQUEST = 1,
@@ -41,6 +42,10 @@ enum dhcp_message_type {
 };
 
 /* DHCP message */
+
+enum {
+    DHCP_HEADER_SIZE = 236 // without size of options
+};
 
 typedef struct {
     uint8_t op;      // message op code, message type
@@ -174,84 +179,87 @@ enum {
 
 };
 
-char *dhcp_option_names[256] = {
+struct {
+    char *name;
+    (int (*f)) (char *, void **);
+} dhcp_option_info [256] = {
 
-    [PAD] "PAD",
-    [END] "END",
-    [SUBNET_MASK] "SUBNET_MASK",
-    [TIME_OFFSET] "TIME_OFFSET",
-    [ROUTER] "ROUTER",
-    [TIME_SERVER] "TIME_SERVER",
-    [NAME_SERVER] "NAME_SERVER",
-    [DOMAIN_NAME_SERVER] "DOMAIN_NAME_SERVER",
-    [LOG_SERVER] "LOG_SERVER",
-    [COOKIE_SERVER] "COOKIE_SERVER",
-    [LPR_SERVER] "LPR_SERVER",
-    [IMPRESS_SERVER] "IMPRESS_SERVER",
-    [RESOURCE_LOCATION_SERVER] "RESOURCE_LOCATION_SERVER",
-    [HOST_NAME] "HOST_NAME",
-    [BOOT_FILE_SIZE] "BOOT_FILE_SIZE",
-    [MERIT_DUMP_FILE] "MERIT_DUMP_FILE",
-    [DOMAIN_NAME] "DOMAIN_NAME",
-    [SWAP_SERVER] "SWAP_SERVER",
-    [ROOT_PATH] "ROOT_PATH",
-    [EXTENSIONS_PATH] "EXTENSIONS_PATH",
-    [IP_FORWARDING] "IP_FORWARDING",
-    [NON_LOCAL_SOURCE_ROUTING] "NON_LOCAL_SOURCE_ROUTING",
-    [POLICY_FILTER] "POLICY_FILTER",
-    [MAXIMUM_DATAGRAM_REASSEMBLY_SIZE] "MAXIMUM_DATAGRAM_REASSEMBLY_SIZE",
-    [DEFAULT_IP_TIME_TO_LIVE] "DEFAULT_IP_TIME_TO_LIVE",
-    [PATH_MTU_AGING_TIMEOUT] "PATH_MTU_AGING_TIMEOUT",
-    [PATH_MTU_PLATEAU_TABLE] "PATH_MTU_PLATEAU_TABLE",
-    [INTERFACE_MTU] "INTERFACE_MTU",
-    [ALL_SUBNETS_ARE_LOCAL] "ALL_SUBNETS_ARE_LOCAL",
-    [BROADCAST_ADDRESS] "BROADCAST_ADDRESS",
-    [PERFORM_MASK_DISCOVERY] "PERFORM_MASK_DISCOVERY",
-    [MASK_SUPPLIER] "MASK_SUPPLIER",
-    [PERFORM_ROUTER_DISCOVERY] "PERFORM_ROUTER_DISCOVERY",
-    [ROUTER_SOLICITATION_ADDRESS] "ROUTER_SOLICITATION_ADDRESS",
-    [STATIC_ROUTE] "STATIC_ROUTE",
-    [TRAILER_ENCAPSULATION] "TRAILER_ENCAPSULATION",
-    [ARP_CACHE_TIMEOUT] "ARP_CACHE_TIMEOUT",
-    [ETHERNET_ENCAPSULATION] "ETHERNET_ENCAPSULATION",
-    [TCP_DEFAULT_TTL] "TCP_DEFAULT_TTL",
-    [TCP_KEEPALIVE_INTERVAL] "TCP_KEEPALIVE_INTERVAL",
-    [TCP_KEEPALIVE_GARBAGE] "TCP_KEEPALIVE_GARBAGE",
-    [NETWORK_INFORMATION_SERVICE_DOMAIN] "NETWORK_INFORMATION_SERVICE_DOMAIN",
-    [NETWORK_INFORMATION_SERVERS] "NETWORK_INFORMATION_SERVERS",
-    [NETWORK_TIME_PROTOCOL_SERVERS] "NETWORK_TIME_PROTOCOL_SERVERS",
-    [VENDOR_SPECIFIC_INFORMATION] "VENDOR_SPECIFIC_INFORMATION",
-    [NETBIOS_OVER_TCP_IP_NAME_SERVER] "NETBIOS_OVER_TCP_IP_NAME_SERVER",
-    [NETBIOS_OVER_TCP_IP_DATAGRAM_DISTRIBUTION_SERVER] "NETBIOS_OVER_TCP_IP_DATAGRAM_DISTRIBUTION_SERVER",
-    [NETBIOS_OVER_TCP_IP_NODE_TYPE] "NETBIOS_OVER_TCP_IP_NODE_TYPE",
-    [NETBIOS_OVER_TCP_IP_SCOPE] "NETBIOS_OVER_TCP_IP_SCOPE",
-    [X_WINDOW_SYSTEM_FONT_SERVER] "X_WINDOW_SYSTEM_FONT_SERVER",
-    [X_WINDOW_SYSTEM_DISPLAY_MANAGER] "X_WINDOW_SYSTEM_DISPLAY_MANAGER",
-    [NETWORK_INFORMATION_SERVICE_PLUS_DOMAIN] "NETWORK_INFORMATION_SERVICE_PLUS_DOMAIN",
-    [NETWORK_INFORMATION_SERVICE_PLUS_SERVERS] "NETWORK_INFORMATION_SERVICE_PLUS_SERVERS",
-    [MOBILE_IP_HOME_AGENT] "MOBILE_IP_HOME_AGENT",
-    [SMTP_SERVER] "SMTP_SERVER",
-    [POP3_SERVER] "POP3_SERVER",
-    [NNTP_SERVER] "NNTP_SERVER",
-    [DEFAULT_WWW_SERVER] "DEFAULT_WWW_SERVER",
-    [DEFAULT_FINGER_SERVER] "DEFAULT_FINGER_SERVER",
-    [DEFAULT_IRC_SERVER] "DEFAULT_IRC_SERVER",
-    [STREETTALK_SERVER] "STREETTALK_SERVER",
-    [STREETTALK_DIRECTORY_ASSISTANCE_SERVER] "STREETTALK_DIRECTORY_ASSISTANCE_SERVER",
-    [REQUESTED_IP_ADDRESS] "REQUESTED_IP_ADDRESS",
-    [IP_ADDRESS_LEASE_TIME] "IP_ADDRESS_LEASE_TIME",
-    [OPTION_OVERLOAD] "OPTION_OVERLOAD",
-    [TFTP_SERVER_NAME] "TFTP_SERVER_NAME",
-    [BOOTFILE_NAME] "BOOTFILE_NAME",
-    [DHCP_MESSAGE_TYPE] "DHCP_MESSAGE_TYPE",
-    [SERVER_IDENTIFIER] "SERVER_IDENTIFIER",
-    [PARAMETER_REQUEST_LIST] "PARAMETER_REQUEST_LIST",
-    [MESSAGE] "MESSAGE",
-    [MAXIMUM_DHCP_MESSAGE_SIZE] "MAXIMUM_DHCP_MESSAGE_SIZE",
-    [RENEWAL_T1_TIME_VALUE] "RENEWAL_T1_TIME_VALUE",
-    [REBINDING_T2_TIME_VALUE] "REBINDING_T2_TIME_VALUE",
-    [VENDOR_CLASS_IDENTIFIER] "VENDOR_CLASS_IDENTIFIER",
-    [CLIENT_IDENTIFIER] "CLIENT_IDENTIFIER"
+    [PAD] { "PAD", NULL },
+    [END] { "END", NULL },
+    [SUBNET_MASK] { "SUBNET_MASK", parse_ip },
+    [TIME_OFFSET] { "TIME_OFFSET", parse_long },
+    [ROUTER] { "ROUTER", parse_ip_list },
+    [TIME_SERVER] { "TIME_SERVER", parse_ip_list },
+    [NAME_SERVER] { "NAME_SERVER", parse_ip_list },
+    [DOMAIN_NAME_SERVER] { "DOMAIN_NAME_SERVER", parse_ip_list },
+    [LOG_SERVER] { "LOG_SERVER", parse_ip_list },
+    [COOKIE_SERVER] { "COOKIE_SERVER", parse_ip_list },
+    [LPR_SERVER] { "LPR_SERVER", parse_ip_list },
+    [IMPRESS_SERVER] { "IMPRESS_SERVER", parse_ip_list },
+    [RESOURCE_LOCATION_SERVER] { "RESOURCE_LOCATION_SERVER", parse_ip_list },
+    [HOST_NAME] { "HOST_NAME", parse_string },
+    [BOOT_FILE_SIZE] { "BOOT_FILE_SIZE", parse_short },
+    [MERIT_DUMP_FILE] { "MERIT_DUMP_FILE", parse_string },
+    [DOMAIN_NAME] { "DOMAIN_NAME", parse_string },
+    [SWAP_SERVER] { "SWAP_SERVER", parse_ip },
+    [ROOT_PATH] { "ROOT_PATH", parse_string },
+    [EXTENSIONS_PATH] { "EXTENSIONS_PATH", parse_string },
+    [IP_FORWARDING] { "IP_FORWARDING", parse_byte },
+    [NON_LOCAL_SOURCE_ROUTING] { "NON_LOCAL_SOURCE_ROUTING", parse_byte },
+    [POLICY_FILTER] { "POLICY_FILTER", parse_ip_list },
+    [MAXIMUM_DATAGRAM_REASSEMBLY_SIZE] { "MAXIMUM_DATAGRAM_REASSEMBLY_SIZE", parse_short },
+    [DEFAULT_IP_TIME_TO_LIVE] { "DEFAULT_IP_TIME_TO_LIVE", parse_byte },
+    [PATH_MTU_AGING_TIMEOUT] { "PATH_MTU_AGING_TIMEOUT", parse_long },
+    [PATH_MTU_PLATEAU_TABLE] { "PATH_MTU_PLATEAU_TABLE", parse_short_list },
+    [INTERFACE_MTU] { "INTERFACE_MTU", parse_short },
+    [ALL_SUBNETS_ARE_LOCAL] { "ALL_SUBNETS_ARE_LOCAL", parse_byte },
+    [BROADCAST_ADDRESS] { "BROADCAST_ADDRESS", parse_ip },
+    [PERFORM_MASK_DISCOVERY] { "PERFORM_MASK_DISCOVERY", parse_byte },
+    [MASK_SUPPLIER] { "MASK_SUPPLIER", parse_byte },
+    [PERFORM_ROUTER_DISCOVERY] { "PERFORM_ROUTER_DISCOVERY", parse_byte },
+    [ROUTER_SOLICITATION_ADDRESS] { "ROUTER_SOLICITATION_ADDRESS", parse_ip },
+    [STATIC_ROUTE] { "STATIC_ROUTE", parse_ip_list },
+    [TRAILER_ENCAPSULATION] { "TRAILER_ENCAPSULATION", parse_byte },
+    [ARP_CACHE_TIMEOUT] { "ARP_CACHE_TIMEOUT", parse_long },
+    [ETHERNET_ENCAPSULATION] { "ETHERNET_ENCAPSULATION", parse_byte },
+    [TCP_DEFAULT_TTL] { "TCP_DEFAULT_TTL", parse_byte },
+    [TCP_KEEPALIVE_INTERVAL] { "TCP_KEEPALIVE_INTERVAL", parse_long },
+    [TCP_KEEPALIVE_GARBAGE] { "TCP_KEEPALIVE_GARBAGE", parse_byte },
+    [NETWORK_INFORMATION_SERVICE_DOMAIN] { "NETWORK_INFORMATION_SERVICE_DOMAIN", parse_string },
+    [NETWORK_INFORMATION_SERVERS] { "NETWORK_INFORMATION_SERVERS", parse_ip_list },
+    [NETWORK_TIME_PROTOCOL_SERVERS] { "NETWORK_TIME_PROTOCOL_SERVERS", parse_ip_list },
+    [VENDOR_SPECIFIC_INFORMATION] { "VENDOR_SPECIFIC_INFORMATION", parse_byte_list },
+    [NETBIOS_OVER_TCP_IP_NAME_SERVER] { "NETBIOS_OVER_TCP_IP_NAME_SERVER", parse_ip_list },
+    [NETBIOS_OVER_TCP_IP_DATAGRAM_DISTRIBUTION_SERVER] { "NETBIOS_OVER_TCP_IP_DATAGRAM_DISTRIBUTION_SERVER", parse_ip_list },
+    [NETBIOS_OVER_TCP_IP_NODE_TYPE] { "NETBIOS_OVER_TCP_IP_NODE_TYPE", parse_byte },
+    [NETBIOS_OVER_TCP_IP_SCOPE] { "NETBIOS_OVER_TCP_IP_SCOPE", parse_string },
+    [X_WINDOW_SYSTEM_FONT_SERVER] { "X_WINDOW_SYSTEM_FONT_SERVER", parse_ip_list },
+    [X_WINDOW_SYSTEM_DISPLAY_MANAGER] { "X_WINDOW_SYSTEM_DISPLAY_MANAGER", parse_ip_list },
+    [NETWORK_INFORMATION_SERVICE_PLUS_DOMAIN] { "NETWORK_INFORMATION_SERVICE_PLUS_DOMAIN", parse_string },
+    [NETWORK_INFORMATION_SERVICE_PLUS_SERVERS] { "NETWORK_INFORMATION_SERVICE_PLUS_SERVERS", parse_ip_list },
+    [MOBILE_IP_HOME_AGENT] { "MOBILE_IP_HOME_AGENT", parse_ip_list },
+    [SMTP_SERVER] { "SMTP_SERVER", parse_ip_list },
+    [POP3_SERVER] { "POP3_SERVER", parse_ip_list },
+    [NNTP_SERVER] { "NNTP_SERVER", parse_ip_list },
+    [DEFAULT_WWW_SERVER] { "DEFAULT_WWW_SERVER", parse_ip_list },
+    [DEFAULT_FINGER_SERVER] { "DEFAULT_FINGER_SERVER", parse_ip_list },
+    [DEFAULT_IRC_SERVER] { "DEFAULT_IRC_SERVER", parse_ip_list },
+    [STREETTALK_SERVER] { "STREETTALK_SERVER", parse_ip_list },
+    [STREETTALK_DIRECTORY_ASSISTANCE_SERVER] { "STREETTALK_DIRECTORY_ASSISTANCE_SERVER",  parse_ip_list },
+    [REQUESTED_IP_ADDRESS] { "REQUESTED_IP_ADDRESS", NULL },
+    [IP_ADDRESS_LEASE_TIME] { "IP_ADDRESS_LEASE_TIME", parse_long },
+    [OPTION_OVERLOAD] { "OPTION_OVERLOAD", parse_byte },
+    [TFTP_SERVER_NAME] { "TFTP_SERVER_NAME", parse_string },
+    [BOOTFILE_NAME] { "BOOTFILE_NAME", parse_string },
+    [DHCP_MESSAGE_TYPE] { "DHCP_MESSAGE_TYPE", NULL },
+    [SERVER_IDENTIFIER] { "SERVER_IDENTIFIER", parse_ip },
+    [PARAMETER_REQUEST_LIST] { "PARAMETER_REQUEST_LIST", NULL },
+    [MESSAGE] { "MESSAGE", NULL },
+    [MAXIMUM_DHCP_MESSAGE_SIZE] { "MAXIMUM_DHCP_MESSAGE_SIZE", NULL },
+    [RENEWAL_T1_TIME_VALUE] { "RENEWAL_T1_TIME_VALUE", parse_long },
+    [REBINDING_T2_TIME_VALUE] { "REBINDING_T2_TIME_VALUE", parse_long },
+    [VENDOR_CLASS_IDENTIFIER] { "VENDOR_CLASS_IDENTIFIER", NULL },
+    [CLIENT_IDENTIFIER] { "CLIENT_IDENTIFIER", NULL },
     
 };
 
@@ -261,8 +269,6 @@ typedef struct dhcp_option_ {
     uint8_t id;        // option id
     uint8_t len;       // option length
     uint8_t data[256]; // option data
-
-    struct dhcp_option_ *next; // next option in list
 } dhcp_option;
 
 /* Single address association */
@@ -284,20 +290,14 @@ enum {
 
 typedef struct address_binding_ {
     uint32_t address;     // address
-    uint8_t chaddr[16];   // client hw address
+    uint8_t cident_len;   // client identifier len
     uint8_t cident[256];  // client identifier
     
     time_t assoc_time;    // time of association
     time_t lease_time;    // duration of lease
 
-    time_t default_lease_time; // default duration of a lease
-    time_t max_lease_time;     // max acceptable lease time
-    time_t pending_time;       // duration of a binding in the pending state
-
     int status;           // binding status
     int flags;            // binding flags
-
-    dhcp_option *options; // options for this association
 
     struct address_binding_ *next; // next address in list
 } address_binding;
@@ -325,7 +325,7 @@ struct {
     time_t max_lease_time;     // max acceptable lease time
     time_t pending_time;       // duration of a binding in the pending state
 
-    dhcp_option *options; // options for this pool
+    dhcp_option options[256]; // options for this pool
 
     address_binding *bindings; // list of associated addresses
 } pool;
@@ -337,14 +337,18 @@ struct {
  * and a pointer to the binding is returned for further manipulations.
  */
 
-address_binding *add_binding (uint32_t address, uint8_t *chaddr, int status, int flags)
+address_binding *add_binding (uint32_t address, uint8_t cident_len, uint8_t *cident, int status, int flags)
 {
     // fill binding
 
     address_binding *binding = calloc(1, sizeof(*binding));
 
     binding->address = address;
-    memcpy(binding->chaddr, chaddr, 6);
+    memcpy(binding->cident, cident, cident_len);
+
+    binding->assoc_time = time();
+    binding->lease_time = pool.default_lease_time;
+
     binding->status = status;
     binding->flags = flags;
 
@@ -368,7 +372,7 @@ address_binding *add_binding (uint32_t address, uint8_t *chaddr, int status, int
  * Delete a binding
  */
 
-void remove_binding (uint8_t *chaddr)
+void release_binding (uint8_t len, uint8_t *cident)
 {
     address_binding *tmp = pool.bindings;
     
@@ -376,7 +380,8 @@ void remove_binding (uint8_t *chaddr)
 	return;
     }
 
-    else if (memcmp(tmp->chaddr, chaddr, 6) == 0) {
+    else if (tmp->cident_len == len &&
+	     memcmp(tmp->cident, cident, len) == 0) {
 	pool.bindings = tmp->next;
 	free(tmp);
     }
@@ -385,7 +390,8 @@ void remove_binding (uint8_t *chaddr)
 	address_binding *prev = tmp;
 	tmp = tmp->next;
 
-	while (tmp && memcmp(tmp->chaddr, chaddr, 6) != 0) {
+	while (tmp && tmp->cident_len == len &&
+	       memcmp(tmp->cident, cident, len) != 0) {
 	    prev = tmp;
 	    tmp = tmp->next;
 	}
@@ -399,66 +405,220 @@ void remove_binding (uint8_t *chaddr)
 
 /* Option-related function */
 
-uint8_t *serialize_option (uint8_t *p, dhcp_option *o)
+int parse_byte (char *s, void **p)
 {
-    p[0] = o->id;
-    p[1] = o->len;
-    memcpy(p+2, o->data, o->len);
+    *p = malloc(sizeof(uint8_t));
+    **p = ((uint8_t) strtol(s, NULL, 0));
 
-    return p + 2 + o->len;
+    return sizeof(uint8_t);
 }
 
-/* parsers for config files */
-
-void * parse_long (char *s)
+int parse_byte_list (char *s, void **p)
 {
-    long *l = malloc(sizeof(*l));
-    l = strtol(s, NULL, 0);
-    return l;
-}
+    *p = malloc(strlen(s) * sizeof(uint8_t)); // slightly over the strictly requested size
 
-void * parse_string (char *s)
-{
-    return strdup(s);
-}
+    int count = 0;
 
-void * parse_ip (char *s)
-{
-    struct sockaddr_in *ip = malloc(sizeof(*ip));
+    char *s2 = strdup(s);
+    char *s3 = strtok(s2, ", ");
 
-    if (inet_aton(s, &ip->sin_addr) == 0) { // error: invalid IP address
-	free(ip);
-	return NULL;
+    while(s3 != NULL) {
+
+	uint8_t n = ((uint8_t) strtol(s3, NULL, 0));
+
+	memcpy(((uint8_t *) *p) + count, n, sizeof(uint8_t));
+
+	count += sizeof(uint8_t);
+	s3 = strtok(NULL, " ");
     }
 
-    return ip;
+    free(s2);
+
+    return count;
 }
 
-void * parse_mac (char *s)
+int parse_short (char *s, void **p)
 {
-    uint8_t *mac = malloc(6);
+    *p = malloc(sizeof(uint16_t));
+    **p = ((uint16_t) strtol(s, NULL, 0));
+
+    return sizeof(uint16_t);
+}
+
+int parse_short_list (char *s, void **p)
+{
+    *p = malloc(strlen(s) * sizeof(uint16_t)); // slightly over the strictly requested size
+
+    int count = 0;
+
+    char *s2 = strdup(s);
+    char *s3 = strtok(s2, ", ");
+
+    while(s3 != NULL) {
+
+	uint16_t n = ((uint16_t) strtol(s3, NULL, 0));
+
+	memcpy(((uint8_t *) *p) + count, n, sizeof(uint16_t));
+
+	count += sizeof(uint16_t);
+	s3 = strtok(NULL, " ");
+    }
+
+    free(s2);
+
+    return count;
+}
+
+int parse_long (char *s, void **p)
+{
+    *p = malloc(sizeof(uint32_t));
+    **p = strtol(s, NULL, 0);
+
+    return sizeof(uint32_t);
+}
+
+int parse_string (char *s, void **p)
+{
+    *p = strdup(s);
+
+    return strlen(s);
+}
+
+int parse_ip (char *s, void **p)
+{
+    struct sockaddr_in ip;
+    
+    *p = malloc(sizeof(uint32_t));
+
+    if (inet_aton(s, &ip.sin_addr) == 0) { // error: invalid IP address
+	free(*p);
+	return 0;
+    }
+
+    memcpy(*p, ip.sin_addr, sizeof(uint32_t));
+
+    return sizeof(uint32_t);
+}
+
+int parse_ip_list (char *s, void **p)
+{
+    *p = malloc(strlen(s) * sizeof(uint32_t) / 4); // slightly over the strictly required size
+
+    int count = 0;
+
+    char *s2 = strdup(s);
+    char *s3 = strtok(s2, ", ");
+
+    while(s3 != NULL) {
+	struct sockaddr_in ip;
+
+	if (inet_aton(s3, &ip.sin_addr) == 0) { // error: invalid IP address
+	    free(*p);
+	    return 0;
+	}
+
+	memcpy(((* uint8_t) *p) + count, ip.sin_addr, sizeof(uint32_t));
+
+	count += sizeof(uint32_t);
+	s3 = strtok(NULL, " ");
+    }
+
+    free(s2);
+
+    return count;
+}
+
+int parse_mac (char *s, void **p)
+{
+    *p = malloc(6);
     int i;
 
     if (strlen(s) != 17 ||
        s[2] != ':' || s[5] != ':' || s[8] != ':' || s[11] != ':' || s[14] != ':') {
-	free(mac);
-	return NULL; // error: invalid MAC address
+	free(*p);
+	return 0; // error: invalid MAC address
     }
 
     if (!isxdigit(s[0]) || !isxdigit(s[1]) || !isxdigit(s[3]) || !isxdigit(s[4]) || 
 	!isxdigit(s[6]) || !isxdigit(s[7]) || !isxdigit(s[9]) || !isxdigit(s[10]) ||
 	!isxdigit(s[12]) || !isxdigit(s[13]) || !isxdigit(s[15]) || !isxdigit(s[16])) {
-	free(mac);
+	free(*p);
 	return NULL; // error: invalid MAC address
     }
 
     for (i = 0; i < 6; i++) {
 	long b = strtol(s+(3*i), NULL, 16);
-	mac[i] = (uint8_t) b;
+	((uint8_t *) *p)[i] = (uint8_t) b;
     }
 
-    mac;
+    return 6;
 }
+
+dhcp_option * parse_option (dhcp_option *opt, char *name, char *value)
+{
+    (int (*f)) (char *, void **);
+    int code;
+
+    uint8_t len;
+    uint8_t *p;
+
+    for (code = 0; code < 256; code++) {
+	if (dhcp_option_names[code].name &&
+	    strcmp(dhcp_option_names[code].name, name) == 0) break;
+    }
+
+    if (code == 256) {
+	error("Unsupported DHCP option '%s'", name);
+	return NULL;
+    }
+
+    f = dhcp_option_info[code].f;
+
+    if (f == NULL) {
+	error("Unsupported DHCP option '%s'", name);
+	return NULL;
+    }
+
+    len = f(value, &p);
+
+    opt->id = id;
+    opt->len = len;
+
+    memcpy(opt->data, p, len);
+
+    free(p);
+
+    return opt;
+}
+
+dhcp_option * copy_option (uint8_t id, dhcp_option *opts, dhcp_option *dst)
+{
+    dhcp_option *opt = &opts[id];
+
+    if (opt->id == 0)
+	return NULL;
+
+    memcpy(dst, opt, 2 + opt->len);
+
+    // return next place to write a DHCP option
+    return ((uint8_t *) dst) + 2 + opt->len;
+}
+
+dhcp_option * search_option (uint8_t id, int opts_len, dhcp_option *opts)
+{
+    dhcp_option *opt = opts, *end = ((uint8_t *) opts) + opts_len;
+
+    while (opt < end && opt->id != id && opt->id != END) {
+	opt = ((uint8_t *) opt) + 2 + opt->len;
+    }
+
+    if (opt < end && opt->id == id)
+	return opt;
+
+    return NULL;
+}
+
+/* parsers for config files */
 
 enum {
     MAX_LINE = 2048
@@ -466,22 +626,16 @@ enum {
 
 enum {
     IP_ADDRESS,
-    NETWORK_MASK,
-    DEFAULT_ROUTER,
     POOL_START,
     POOL_END,
-    DEFAULT_LEASE_TIME,
     MAX_LEASE_TIME,
     PENDING_TIME
 };
 
 char *dhcp_config_names[3] = {
     [IP_ADDRESS] "IP_ADDRESS",
-    [NETWORK_MASK] "NETWORK_MASK",
-    [DEFAULT_ROUTER] "DEFAULT_ROUTER",    
     [POOL_START] "POOL_START",
     [POOL_END] "POOL_END",
-    [DEFAULT_LEASE_TIME] "DEFAULT_LEASE_TIME"
     [MAX_LEASE_TIME] "MAX_LEASE_TIME"
     [PENDING_TIME] "PENDING_TIME"
 };
@@ -609,107 +763,68 @@ int token_is_dhcp_option (char *token)
  * Functions to load cofiguration
  */
 
-void load_global_config ()
+int set_ip_from_config (char *option_name, uint32_t *dst, char *option_file)
 {
     uint32_t n; char *s;
 
+    if (!(s = getenv(option_name))) {
+	error("Option not specified: check %s in %s", option_name, option_file);
+	return 0;
+    }
+
+    if ((n = inet_addr(s)) == INADDR_NONE) {
+	error("Invalid IP address: check %s in %s", option_name, option_file);
+	return 0;
+    }
+
+    *dst = ntohl(n);
+
+    return 1;
+}
+
+int set_time_from_config (char *option_name, time_t *dst, char *option_file)
+{
+    char *s;
+
+    if (!(s = getenv(option_name))) {
+	error("Option not specified: check %s in %s", option_name, option_file);
+	return 0;
+    }
+
+    *dst = atoi(s);
+
+    return 1;
+}
+
+void load_global_config ()
+{
     // save server IP address
 
-    if (!(s = getenv("IP_ADDRESS"))) {
-	error("Could not obtain server IP address: check IP_ADDRESS in config.sh");
+    if (!set_ip_from_config("IP_ADDRESS", &pool.server_id, "config.sh"))
 	exit(1);
-    }
 
-    if ((n = inet_addr(s)) == INADDR_NONE) {
-	error("Invalid server IP address: check IP_ADDRESS in config.sh");
-	exit(1);
-    }
-
-    pool.server_id = ntohl(n);
-
-    // save network mask
-
-    if (!(s = getenv("NETWORK_MASK"))) {
-	error("Could not obtain network mask: check NETWORK_MASK in config.sh");
-	exit(1);
-    }
-
-    if ((n = inet_addr(s)) == INADDR_NONE) {
-	error("Invalid network mask: check NETWORK_MASK in config.sh");
-	exit(1);
-    }
-
-    pool.netmask = ntohl(n);
-
-    // save default gateway
-
-    if (!(s = getenv("DEFAULT_GATEWAY"))) {
-	error("Could not obtain default gateway: check DEFAULT_GATEWAY in config.sh");
-	exit(1);
-    }
-
-    if ((n = inet_addr(s)) == INADDR_NONE) {
-	error("Invalid default gateway: check DEFAULT_GATEWAY in config.sh");
-	exit(1);
-    }
-
-    pool.gateway = ntohl(n);
 
     // save first IP address of the pool
 
-    if (!(s = getenv("POOL_START"))) {
-	error("Could not obtain first IP address of the pool: check POOL_START in config.sh");
+    if (!set_ip_from_config("POOL_START", &pool.first, "config.sh"))
 	exit(1);
-    }
 
-    if ((n = inet_addr(s)) == INADDR_NONE) {
-	error("Invalid first IP address of the pool: check POOL_START in config.sh");
-	exit(1);
-    }
-
-    pool.first = ntohl(n);
     pool.current = pool.first;
 
     // save last IP address of the pool
 
-    if (!(s = getenv("POOL_END"))) {
-	error("Could not obtain last IP address of the pool: check POOL_END in config.sh");
+    if (!set_ip_from_config("POOL_END", &pool.last, "config.sh"))
 	exit(1);
-    }
-
-    if ((n = inet_addr(s)) == INADDR_NONE) {
-	error("Invalid last IP address of the pool: check POOL_END in config.sh");
-	exit(1);
-    }
-
-    pool.last = ntohl(n);
-
-    // save default lease time
-
-    if (!(s = getenv("DEFAULT_LEASE_TIME"))) {
-	error("Could not obtain default lease time: check DEFAULT_LEASE_TIME in config.sh");
-	exit(1);
-    }
-
-    pool.default_lease_time = atoi(s);
 
     // save max lease time
 
-    if (!(s = getenv("MAX_LEASE_TIME"))) {
-	error("Could not obtain max lease time: check MAX_LEASE_TIME in config.sh");
+    if (!set_time_from_config("MAX_LEASE_TIME", &pool.max_lease_time, "config.sh"))
 	exit(1);
-    }
-
-    pool.max_lease_time = atoi(s);
 
     // save pending time
 
-    if (!(s = getenv("PENDING_TIME"))) {
-	error("Could not obtain pending time: check PENDING_TIME in config.sh");
+    if (!set_time_from_config("PENDING_TIME", &pool.pending_time, "config.sh"))
 	exit(1);
-    }
-
-    pool.pending_time = atoi(s);
 
 }
 
@@ -732,14 +847,39 @@ void load_static_bindings ()
 
     while(binding_name != NULL) {
 
+	char file_name[256];
 	char var_name[256];
-	char *s2;
+	uint8_t mac;
 
+	snprintf(file_name, sizeof(file_name), "%s.sh", binding_name);
+
+	if ((mac = parse_mac(binding_name)) == NULL) {
+	  error("Client identifier is not a MAC address: '%s'", binding_name);
+	  exit(1);
+	}
+
+	// create binding
+	address_binding *binding = add_binding (0, mac, EMPTY, STATIC);
+
+	free(mac);
+
+	// save IP address
+
+	snprintf(var_name, sizeof(var_name), "%s_%s", binding_name, "IP_ADDRESS");
+
+	if (!set_ip_from_config(var_name, &binding.address, file_name))
+	    exit(1);
+
+	// save max lease time
+
+	snprintf(var_name, sizeof(var_name), "%s_%s", binding_name, "MAX_LEASE_TIME");
+	set_time_from_config(var_name, &binding.max_lease_time, file_name);
+
+	// save pending time
+
+	snprintf(var_name, sizeof(var_name), "%s_%s", binding_name, "PENDING_TIME");
+	set_time_from_config(var_name, &binding.pending_time, file_name);
 	
-
-	snprintf(var_name, sizeof(var_name), "%s_%s", binding_name, "OPTION");
-
-
 	binding_name = strtok(NULL, " ");
     }
 
@@ -859,7 +999,7 @@ dhcp_message *serve_dhcp_decline (dhcp_message *msg, dhcp_option *opts)
     return NULL;
 }
 
-3dhcp_message *serve_dhcp_release (dhcp_message *msg, dhcp_option *opts)
+dhcp_message *serve_dhcp_release (dhcp_message *msg, dhcp_option *opts)
 {
     dhcp_binding binding = search_pending_binding(msg);
 
@@ -878,6 +1018,81 @@ dhcp_message *serve_dhcp_inform (dhcp_message *msg, dhcp_option *opts)
     return NULL;
 }
 
+/*
+ * Dispatch client DHCP messages to the correct handling routines
+ */
+
+void message_dispatcher (sockaddr_in server_sock, int s)
+{
+     
+    while (1) {
+	struct sockaddr_in client_sock;
+	socklen_t slen = sizeof(client_sock);
+	ssize_t len;
+
+	dhcp_message message;
+	dhcp_option *opt;
+
+	uint8_t *opts;
+	uint8_t type;
+
+	if ((len = dhcp_recv_message(s, &message, &client_sock, &slen)) < 0) {
+	    continue;
+	}
+
+	if (len < 300) { // TODO
+	    printf("%s.%u: request with invalid size received\n",
+		   inet_ntoa(client_sock.sin_addr), ntohs(client_sock.sin_port));
+	    continue;
+	}
+
+	if (message.op != BOOTREQUEST)
+	    continue;
+
+	if (memcmp(message.options, option_magic, sizeof(option_magic)) != 0) { // TODO
+	    printf("%s.%u: request with invalid option magic\n",
+		   inet_ntoa(client_sock.sin_addr), ntohs(client_sock.sin_port));
+	    continue;
+	}
+
+	opts = message.options + sizeof(option_magic);
+	opt = search_option(DHCP_MESSAGE_TYPE,
+			    len - DHCP_HEADER_SIZE - sizeof(option_magic), opts);
+
+	if (opt == NULL) {
+	    printf("%s.%u: request without DHCP message type option\n",
+		   inet_ntoa(client_sock.sin_addr), ntohs(client_sock.sin_port));
+	    continue;
+	}
+
+	switch (opt->data[0]) {
+
+	case DHCPDISCOVER:
+	    serve_dhcp_discover(message, opts);
+
+	case DHCPREQUEST:
+	    serve_dhcp_request(message, opts);
+
+	case DHCPDECLINE:
+	    serve_dhcp_decline(message, opts);
+
+	case DHCPRELEASE:
+	    serve_dhcp_release(message, opts);
+
+	case DHCPINFORM:
+	    serve_dhcp_inform(message, opts);
+
+	default:
+	    printf("%s.%u: request with invalid DHCP message type option\n",
+		   inet_ntoa(client_sock.sin_addr), ntohs(client_sock.sin_port));
+	    break;
+	
+	}
+
+    }
+
+}
+
 int main (int argc, char *argv[])
 {
     int s;
@@ -885,6 +1100,11 @@ int main (int argc, char *argv[])
     struct protoent *pp;
     struct servent *ss;
     struct sockaddr_in server_sock;
+
+    /* Load configuration */
+
+    load_global_config();
+    load_static_bindings();
 
     /* Set up server */
 
@@ -916,47 +1136,8 @@ int main (int argc, char *argv[])
      printf("dhcp server: listening on %d\n", ntohs(server_sock.sin_port));
 
      /* Message processing loop */
-
-     while (1) {
-         struct sockaddr_in client_sock;
-         socklen_t slen = sizeof(client_sock);
-         ssize_t len;
-
-         dhcp_message message;
-         uint8_t opcode;
-
-         if ((len = dhcp_recv_message(s, &message, &client_sock, &slen)) < 0) {
-             continue;
-         }
-
-         if (len < 300) { 
-             printf("%s.%u: request with invalid size received\n",
-                    inet_ntoa(client_sock.sin_addr), ntohs(client_sock.sin_port));
-             dhcp_send_error(s, 0, "invalid request size", &client_sock, slen);
-             continue;
-         }
-
-          opcode = message.op;
-
-          if (opcode == RRQ || opcode == WRQ) {
-
-               /* spawn a child process to handle the request */
-
-               if (fork() == 0) {
-                    tftp_handle_request(&message, len, &client_sock, slen);
-                    exit(0);
-               }
-
-          }
-
-          else {
-               printf("%s.%u: invalid request received: opcode \n", 
-                      inet_ntoa(client_sock.sin_addr), ntohs(client_sock.sin_port),
-                      opcode);
-               tftp_send_error(s, 0, "invalid opcode", &client_sock, slen);
-          }
-
-     }
+     
+     message_dispatcher(server_sock, s);
 
      close(s);
 
