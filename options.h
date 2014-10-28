@@ -5,6 +5,15 @@
  * as defined in RFC 2132
  */
 
+enum dhcp_msg_type {
+     DHCP_DISCOVER = 1,
+     DHCP_OFFER    = 2,
+     DHCP_REQUEST  = 3,
+     DHCP_ACK      = 4,
+     DHCP_NAK      = 5,
+     DHCP_INFORM   = 6,
+};
+
 enum {
 
 /* RFC 1497 Vendor Extensions */

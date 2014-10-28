@@ -455,26 +455,70 @@ void load_static_bindings ()
  * DHCP server functions
  */
 
-dhcp_message *prepare_dhcp_offer (dhcp_message *msg, dhcp_option *opts, address_assoc *assoc)
+dhcp_message *prepare_dhcp_offer (dhcp_message *msg, size_t len, dhcp_option *opts, address_assoc *assoc)
 {
      dhcp_message *reply = calloc(1, sizeof(*msg));
 
      reply->op = BOOTREPLY;
 
-     reply->htype = ETHERNET; // fixme
-     reply->hlen = 6;
+     reply->htype = ETHERNET;
+     reply->hlen  = ETHERNET_LEN;
 
      reply->xid = msg->xid;
      reply->secs = msg->secs;
+     
+     // TODO: flags for multicast
+     // see RFC
 
      reply->yiaddr = htonl(assoc->address);
      reply->siaddr = htonl(pool.server_id);
 
-     dhcp_option *requested_opts = 
+     // TODO: relay ip agent
+     // see RFC
+
+     memcpy(&reply->chaddr, &msg->chaddr, sizeof(msg->chaddr));
+
+     /* Begin filling of options */
+
+     dhcp_option *dst = &reply.options;
+     uint8_t  *my_end = reply + sizeof(*reply);
+
+     memcpy(dst, option_magic, 4); // set option magic bytes
+     dst = ((uint8_t *)dst) + 4;
+
+     dhcp_option type = { DHCP_MESSAGE_TYPE, 1,  };
+     
+     dhcp_option *requested_opts = search_option(opts, len - DHCP_HEADER_SIZE, PARAMETER_REQUEST_LIST);
+
+     if (requested_opts) {
+
+         uint8_t *id = &requested_opts->data;
+
+         uint8_t *end = msg + len < id + requested_opts->len ? 
+                        msg + len :
+                        id + requested_opts->len;
+
+         for (; id < end; id++) { // NOTE: we don't check attacks on length...
+
+             if(pool.options[*id].id != 0) {
+
+                 if(dst + pool.options[*id].len + 2 > my_end) { // check bounds for our reply buffer
+                     free(reply);
+                     return NULL;
+                 }
+
+                 dst = copy_option (dst, &pool.options[*id]); // set requested option
+             }
+
+         }
+
+         dst = copy_option (dst, &pool.options[END]); // set end option
+
+     }
      
 }
 
-dhcp_message *serve_dhcp_discover (dhcp_message *msg, dhcp_option *opts)
+dhcp_message *serve_dhcp_discover (dhcp_message *msg, size_t len, dhcp_option *opts)
 {  
     address_assoc *assoc = search_static_assoc(msg);
 
@@ -530,7 +574,7 @@ dhcp_message *serve_dhcp_discover (dhcp_message *msg, dhcp_option *opts)
     
 }
 
-dhcp_message *serve_dhcp_request (dhcp_message *msg, dhcp_option *opts)
+dhcp_message *serve_dhcp_request (dhcp_message *msg, size_t len, dhcp_option *opts)
 {  
     uint32_t server_id = get_server_id(opts);
 
@@ -570,7 +614,7 @@ dhcp_message *serve_dhcp_request (dhcp_message *msg, dhcp_option *opts)
 
 }
 
-dhcp_message *serve_dhcp_decline (dhcp_message *msg, dhcp_option *opts)
+dhcp_message *serve_dhcp_decline (dhcp_message *msg, size_t len, dhcp_option *opts)
 {
     dhcp_binding binding = search_pending_binding(msg);
 
@@ -582,7 +626,7 @@ dhcp_message *serve_dhcp_decline (dhcp_message *msg, dhcp_option *opts)
     return NULL;
 }
 
-dhcp_message *serve_dhcp_release (dhcp_message *msg, dhcp_option *opts)
+dhcp_message *serve_dhcp_release (dhcp_message *msg, size_t len, dhcp_option *opts)
 {
     dhcp_binding binding = search_pending_binding(msg);
 
@@ -594,7 +638,7 @@ dhcp_message *serve_dhcp_release (dhcp_message *msg, dhcp_option *opts)
     return NULL;
 }
 
-dhcp_message *serve_dhcp_inform (dhcp_message *msg, dhcp_option *opts)
+dhcp_message *serve_dhcp_inform (dhcp_message *msg, size_t len, dhcp_option *opts)
 {
     // TODO
 
@@ -611,7 +655,7 @@ void message_dispatcher (sockaddr_in server_sock, int s)
     while (1) {
 	struct sockaddr_in client_sock;
 	socklen_t slen = sizeof(client_sock);
-	ssize_t len;
+	size_t len;
 
 	dhcp_message message;
 	dhcp_option *opt;
@@ -651,19 +695,19 @@ void message_dispatcher (sockaddr_in server_sock, int s)
 	switch (opt->data[0]) {
 
 	case DHCPDISCOVER:
-	    serve_dhcp_discover(message, opts);
+            serve_dhcp_discover(message, len, opts);
 
 	case DHCPREQUEST:
-	    serve_dhcp_request(message, opts);
+	    serve_dhcp_request(message, len, opts);
 
 	case DHCPDECLINE:
-	    serve_dhcp_decline(message, opts);
+	    serve_dhcp_decline(message, len, opts);
 
 	case DHCPRELEASE:
-	    serve_dhcp_release(message, opts);
+	    serve_dhcp_release(message, len, opts);
 
 	case DHCPINFORM:
-	    serve_dhcp_inform(message, opts);
+	    serve_dhcp_inform(message, len, opts);
 
 	default:
 	    printf("%s.%u: request with invalid DHCP message type option\n",

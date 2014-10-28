@@ -5,6 +5,11 @@ enum op_types {
     BOOTREPLY   = 2,   
 };
 
+enum hardware_address_types {
+    ETHERNET     = 0x01,
+    ETHERNET_LEN = 0x06,
+};
+
 /* DHCP message */
 
 enum {
