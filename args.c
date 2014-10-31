@@ -23,9 +23,6 @@ void usage(char *msg, int exit_status)
  
 void parse_args(int argc, char *argv[], address_pool *pool)
 {
-    int aflag = 0;
-    int bflag = 0;
-    char *cvalue = NULL;
     int index;
     int c;
 
@@ -33,41 +30,90 @@ void parse_args(int argc, char *argv[], address_pool *pool)
   
     while ((c = getopt (argc, argv, "a:l:m:o:p:")) != -1)
 	switch (c) {
-	case 'a':
-	    char *opt = strdup(optarg);
+
+	case 'a': // parse IP address pool
+	    char *opt    = strdup(optarg);
+	    char *sfirst = opt;
+	    char *slast  = strchr(opt, ',');
 	    
-	    char *first = opt;
-	    char *last = strchr(opt, ',');
+	    if (slast == NULL)
+		usage("error: comma not present in option -a.", 1);
+	    slast++;
 	    
-	    if (last == NULL) usage("Error: comma not present in option -a.", 1);
-	    last++;
+	    uint32_t *first, *last;
+
+	    if (parse_ip(sfirst, &first) != 4)
+		usage("error: invalid first ip in address pool.", 1);
+
+
+	    if (parse_ip(slast, &last) != 4)
+		usage("error: invalid last ip in address pool.", 1);
+
+	    pool->first   = *first;
+	    pool->last    = *last;
+	    pool->current = *first;
+
+	    free(first);
+	    free(last);
+	    free(opt);
+
+	    break;
+
+	case 'l': // parse default lease time
+	    time_t *t;
+
+	    if(parse_long(optarg, &t) != 4)
+		usage("error: invalid default lease time.", 1);
+
+	    pool->lease_time = *t;
+	    free(t);
+	    break;
+
+	case 'm': // parse max lease time
+	    time_t *t;
+
+	    if(parse_long(optarg, &t) != 4)
+		usage("error: invalid max lease time.", 1);
+
+	    pool->max_lease_time = *t;
+	    free(t);
+	    break;
+
+	case 'o': // parse dhcp option
+	    dhcp_option option;
+	    uint8_t id;
+
+	    char *opt   = strdup(optarg);
+	    char *name  = opt;
+	    char *value = strchr(opt, ',');
 	    
-	    pool->
+	    if (value == NULL)
+		usage("error: comma not present in option -o.", 1);
+	    value++;
+
+	    if((id = parse_option(&option, name, value)) == 0)
+		usage("error: invalid dhcp option specified.", 1);
+
+	    copy_option(&pool->options[id], &option);
 
 	    free(opt);
+
+	case 'p': // parse pending time
+	    time_t *t;
+
+	    if(parse_long(optarg, &t) != 4)
+		usage("error: invalid pending time.", 1);
+
+	    pool->pending_time = *t;
+	    free(t);
 	    break;
-	case 'b':
-	    bflag = 1;
-	    break;
-	case 'c':
-	    cvalue = optarg;
-	    break;
+
 	case '?':
-	    if (optopt == 'c')
-		fprintf (stderr, "Option -%c requires an argument.\n", optopt);
-	    else if (isprint (optopt))
-		fprintf (stderr, "Unknown option `-%c'.\n", optopt);
-	    else
-		fprintf (stderr,
-			 "Unknown option character `\\x%x'.\n",
-			 optopt);
-	    return 1;
+	    usage(NULL, 1);
+
 	default:
-	    abort ();
+	    usage(NULL, 1);
 	}
-    
-    printf ("aflag = %d, bflag = %d, cvalue = %s\n",
-	    aflag, bflag, cvalue);
     
     for (index = optind; index < argc; index++)
 	printf ("Non-option argument %s\n", argv[index]);

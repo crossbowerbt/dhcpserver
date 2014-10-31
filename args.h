@@ -28,9 +28,9 @@ struct address_pool {
     uint32_t last;      // last address of the pool
     uint32_t current;   // current unallocated address
 
-    time_t default_lease_time; // default duration of a lease
-    time_t max_lease_time;     // max acceptable lease time
-    time_t pending_time;       // duration of a binding in the pending state
+    time_t lease_time;      // default duration of a lease
+    time_t max_lease_time;  // max acceptable lease time
+    time_t pending_time;    // duration of a binding in the pending state
 
     dhcp_option options[256]; // options for this pool
 

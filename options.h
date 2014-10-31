@@ -126,6 +126,24 @@ struct dhcp_option {
 
 typedef struct dhcp_option dhcp_option;
 
+/* Value parsing functions:
+ *
+ * Parse the string pointed by s, and allocate the
+ * pointer p to contain the parsed data.
+ * 
+ * On success return the size of the parsed data,
+ * on error return zero.
+ */
+
+int parse_byte (char *s, void **p);
+int parse_byte_list (char *s, void **p);
+int parse_short (char *s, void **p);
+int parse_short_list (char *s, void **p);
+int parse_long (char *s, void **p);
+int parse_string (char *s, void **p);
+int parse_ip (char *s, void **p);
+int parse_ip_list (char *s, void **p);
+
 /* Other prototypes */
 
 dhcp_option * parse_option (dhcp_option *_opt, char *_name, char *_value);

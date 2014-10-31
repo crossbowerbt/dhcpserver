@@ -108,7 +108,7 @@ static struct {
 
 /* Value parsing functions */
 
-static int parse_byte (char *s, void **p)
+int parse_byte (char *s, void **p)
 {
     *p = malloc(sizeof(uint8_t));
     **p = ((uint8_t) strtol(s, NULL, 0));
@@ -116,7 +116,7 @@ static int parse_byte (char *s, void **p)
     return sizeof(uint8_t);
 }
 
-static int parse_byte_list (char *s, void **p)
+int parse_byte_list (char *s, void **p)
 {
     *p = malloc(strlen(s) * sizeof(uint8_t)); // slightly over the strictly requested size
 
@@ -140,7 +140,7 @@ static int parse_byte_list (char *s, void **p)
     return count;
 }
 
-static int parse_short (char *s, void **p)
+int parse_short (char *s, void **p)
 {
     *p = malloc(sizeof(uint16_t));
     **p = ((uint16_t) strtol(s, NULL, 0));
@@ -148,7 +148,7 @@ static int parse_short (char *s, void **p)
     return sizeof(uint16_t);
 }
 
-static int parse_short_list (char *s, void **p)
+int parse_short_list (char *s, void **p)
 {
     *p = malloc(strlen(s) * sizeof(uint16_t)); // slightly over the strictly requested size
 
@@ -172,7 +172,7 @@ static int parse_short_list (char *s, void **p)
     return count;
 }
 
-static int parse_long (char *s, void **p)
+int parse_long (char *s, void **p)
 {
     *p = malloc(sizeof(uint32_t));
     **p = strtol(s, NULL, 0);
@@ -180,14 +180,14 @@ static int parse_long (char *s, void **p)
     return sizeof(uint32_t);
 }
 
-static int parse_string (char *s, void **p)
+int parse_string (char *s, void **p)
 {
     *p = strdup(s);
 
     return strlen(s);
 }
 
-static int parse_ip (char *s, void **p)
+int parse_ip (char *s, void **p)
 {
     struct sockaddr_in ip;
     
@@ -203,7 +203,7 @@ static int parse_ip (char *s, void **p)
     return sizeof(uint32_t);
 }
 
-static int parse_ip_list (char *s, void **p)
+int parse_ip_list (char *s, void **p)
 {
     *p = malloc(strlen(s) * sizeof(uint32_t) / 4); // slightly over the strictly required size
 
@@ -237,10 +237,10 @@ static int parse_ip_list (char *s, void **p)
  * Given the name of the option and its value as strings,
  * fill the dhcp_option structure pointed by opt.
  *
- * On error returns NULL,
- * without modifying the structure pointed by opt.
+ * On success return the parsed option id,
+ * otherwise return zero.
  */
-dhcp_option * parse_option (dhcp_option *opt, char *name, char *value)
+uint8_t parse_option (dhcp_option *opt, char *name, char *value)
 {
     (int (*f)) (char *, void **);
     int code;
@@ -274,7 +274,7 @@ dhcp_option * parse_option (dhcp_option *opt, char *name, char *value)
 
     free(p);
 
-    return opt;
+    return opt->id;
 }
 
 /*
