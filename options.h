@@ -143,6 +143,7 @@ int parse_long (char *s, void **p);
 int parse_string (char *s, void **p);
 int parse_ip (char *s, void **p);
 int parse_ip_list (char *s, void **p);
+int parse_mac (char *s, void **p);
 
 /* Other prototypes */
 

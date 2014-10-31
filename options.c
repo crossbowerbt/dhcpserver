@@ -231,6 +231,32 @@ int parse_ip_list (char *s, void **p)
     return count;
 }
 
+int parse_mac (char *s, void **p)
+{
+    *p = malloc(6);
+    int i;
+
+    if (strlen(s) != 17 ||
+       s[2] != ':' || s[5] != ':' || s[8] != ':' || s[11] != ':' || s[14] != ':') {
+	free(*p);
+	return 0; // error: invalid MAC address
+    }
+
+    if (!isxdigit(s[0]) || !isxdigit(s[1]) || !isxdigit(s[3]) || !isxdigit(s[4]) || 
+	!isxdigit(s[6]) || !isxdigit(s[7]) || !isxdigit(s[9]) || !isxdigit(s[10]) ||
+	!isxdigit(s[12]) || !isxdigit(s[13]) || !isxdigit(s[15]) || !isxdigit(s[16])) {
+	free(*p);
+	return 0; // error: invalid MAC address
+    }
+
+    for (i = 0; i < 6; i++) {
+	long b = strtol(s+(3*i), NULL, 16);
+	((uint8_t *) *p)[i] = (uint8_t) b;
+    }
+
+    return 6;
+}
+
 /* Option-related functions */
 
 /* 

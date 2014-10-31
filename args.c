@@ -59,6 +59,41 @@ void parse_args(int argc, char *argv[], address_pool *pool)
 
 	    break;
 
+	case 'b': // parse a static binding
+	    char *opt      = strdup(optarg);
+	    char *smac     = opt;
+	    char *saddress = strchr(opt, ',');
+	    
+	    if (saddress == NULL)
+		usage("error: comma not present in option -b.", 1);
+	    saddress++;
+	    
+	    uint8_t  *mac;
+	    uint32_t *address;
+
+	    if (parse_mac(smac, &mac) != 6)
+		usage("error: invalid mac address in static binding.", 1);
+
+	    if (parse_ip(saddress, &address) != 4)
+		usage("error: invalid address in static binding.", 1);
+
+	    address_binding *binding = calloc(1, sizeof(*binding));
+
+	    binding->address = address;
+
+	    binding->cident_len = 6;
+	    memcpy(binding->cident, mac, 6);
+
+	    binding->flags = STATIC;
+
+	    LIST_INSERT_HEAD(&pool->bindings, binding, pointers);
+
+	    free(mac);
+	    free(address);
+	    free(opt);
+
+	    break;
+
 	case 'l': // parse default lease time
 	    time_t *t;
 
