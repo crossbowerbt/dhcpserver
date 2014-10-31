@@ -13,6 +13,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 
+#include "args.h"
 #include "dhcp.h"
 #include "options.h"
 
@@ -61,23 +62,7 @@ typedef struct address_binding address_binding;
  *       to allow an easy manipulation.
  */
 
-struct {
-    uint32_t server_id; // this server id (IP address)
-    uint32_t netmask;   // network mask
-    uint32_t gateway;   // network gateway
-
-    uint32_t first;     // first address of the pool
-    uint32_t last;      // last address of the pool
-    uint32_t current;   // current unallocated address
-
-    time_t default_lease_time; // default duration of a lease
-    time_t max_lease_time;     // max acceptable lease time
-    time_t pending_time;       // duration of a binding in the pending state
-
-    dhcp_option options[256]; // options for this pool
-
-    address_binding *bindings; // list of associated addresses
-} pool;
+address_pool pool;
 
 /*
  * Create a new binding

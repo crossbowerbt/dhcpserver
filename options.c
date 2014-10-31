@@ -15,17 +15,6 @@
 
 #include "options.h"
 
-/* Value parsing functions */
-
-static int parse_byte (char *s, void **p);
-static int parse_byte_list (char *s, void **p);
-static int parse_short (char *s, void **p);
-static int parse_short_list (char *s, void **p);
-static int parse_long (char *s, void **p);
-static int parse_string (char *s, void **p);
-static int parse_ip (char *s, void **p);
-static int parse_ip_list (char *s, void **p);
-
 /* 
  * Mapping table between DHCP options and 
  * functions that parse their value.
@@ -246,7 +235,7 @@ static int parse_ip_list (char *s, void **p)
 
 /* 
  * Given the name of the option and its value as strings,
- * fill the dhcp_option structure ipointed by opt.
+ * fill the dhcp_option structure pointed by opt.
  *
  * On error returns NULL,
  * without modifying the structure pointed by opt.

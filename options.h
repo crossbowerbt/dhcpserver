@@ -126,7 +126,7 @@ struct dhcp_option {
 
 typedef struct dhcp_option dhcp_option;
 
-/* prototypes */
+/* Other prototypes */
 
 dhcp_option * parse_option (dhcp_option *_opt, char *_name, char *_value);
 uint8_t * copy_option (uint8_t *_dst, dhcp_option *_opt);
