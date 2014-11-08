@@ -55,6 +55,63 @@ address_binding *add_binding (uint32_t address, uint8_t cident_len, uint8_t *cid
 }
 
 /*
+ * Functions to manipulate associations
+ */
+
+address_assoc *
+search_static_assoc(dhcp_message *msg)
+{
+    LIST_FOREACH_SAFE(assoc, pool.bindings, pointers, assoc_temp) {
+
+	if(assoc->assoc_time + assoc->lease_time < time()) { // update status of expired entries
+	    assoc->status = EXPIRED;
+	}
+
+	if(assoc->is_static && memcmp(assoc->cident, msg->chaddr, ETHERNET_LEN)) { // TODO: add support for client string identifier
+	    return assoc;
+	}
+    }
+
+    return NULL;
+}
+
+address_assoc *
+search_dynamic_assoc(dhcp_message *msg)
+{
+    LIST_FOREACH_SAFE(assoc, pool.bindings, pointers, assoc_temp) {
+
+	if(assoc->assoc_time + assoc->lease_time < time()) { // update status of expired entries
+	    assoc->status = EXPIRED;
+	}
+
+	if(memcmp(assoc->cident, msg->chaddr, ETHERNET_LEN)) { // TODO: add support for client string identifier
+	    return assoc;
+	}
+    }
+
+    return NULL;
+}
+
+address_assoc *
+new_dynamic_assoc(dhcp_message *msg, size_t len)
+{
+    int found = 0;
+    
+    LIST_FOREACH_SAFE(assoc, pool.bindings, pointers, assoc_temp) {
+
+	if(assoc->assoc_time + assoc->lease_time < time()) { // update status of expired entries
+	    assoc->status = EXPIRED;
+	}
+
+	if(assoc->address == msg->memcmp(assoc->cident, msg->chaddr, ETHERNET_LEN)) { // TODO: add support for client string identifier
+	    return assoc;
+	}
+    }
+
+    return NULL;
+}
+
+/*
  * DHCP server functions
  */
 
