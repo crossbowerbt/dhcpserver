@@ -1,4 +1,6 @@
 #include <stdint.h>
+#include <time.h>
+#include <sys/queue.h>
 
 /*
  * Code ID of DHCP and BOOTP options 
@@ -127,6 +129,14 @@ struct dhcp_option {
 };
 
 typedef struct dhcp_option dhcp_option;
+
+struct dhcp_option_entry {
+    dhcp_option *option;
+
+    LIST_ENTRY(dhcp_option_entry) pointers; // list pointers, see queue(3)
+};
+
+typedef struct dhcp_option_entry dhcp_option_entry;
 
 /* Value parsing functions:
  *

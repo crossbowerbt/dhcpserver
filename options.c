@@ -348,3 +348,22 @@ search_option (uint8_t *buf, size_t buf_len, uint8_t id)
     return NULL;
 }
 
+/*
+ * Parse the options contained in a DHCP message into a list.
+ *
+ * Return 1 on success, 0 if the options are malformed.
+ */
+
+int
+parse_options_to_list (dhcp_message *msg, size_t len, void *list)
+{
+    
+    LIST_INSERT_AFTER(TYPE *listelm, TYPE *elm, LIST_ENTRY NAME);
+
+         n1 = malloc(sizeof(struct entry));      /* Insert at the head. */
+     LIST_INSERT_HEAD(&head, n1, entries);
+
+     n2 = malloc(sizeof(struct entry));      /* Insert after. */
+    
+    return 1;
+}

@@ -230,7 +230,7 @@ fill_requested_dhcp_options (dhcp_option *requested_opts, dhcp_option *opts_end,
 }
 
 dhcp_msg_type
-prepare_dhcp_offer (dhcp_message *msg, size_t len, dhcp_message *reply, address_assoc *assoc)
+prepare_dhcp_offer_or_ack (dhcp_message *msg, size_t len, dhcp_message *reply, address_assoc *assoc, dhcp_message_type type)
 {
     // assign IP address
 
@@ -248,7 +248,7 @@ prepare_dhcp_offer (dhcp_message *msg, size_t len, dhcp_message *reply, address_
     memcpy(dst, option_magic, 4); // set option magic bytes
     dst = ((uint8_t *)dst) + 4;
 
-    dhcp_option type = { DHCP_MESSAGE_TYPE, 1, DHCP_OFFER };
+    dhcp_option type = { DHCP_MESSAGE_TYPE, 1, type };
     
     dhcp_option *requested_opts = search_option(opts, len - DHCP_HEADER_SIZE, PARAMETER_REQUEST_LIST);
 
@@ -352,6 +352,8 @@ serve_dhcp_request (dhcp_message *msg, size_t len, dhcp_option *opts)
 {  
     uint32_t server_id = get_server_id(opts);
 
+    
+address_assoc *assoc
     if (server_id == pool.server_id) { // this request is an answer to our offer
 	
 	dhcp_binding binding = search_pending_binding(msg);
@@ -372,7 +374,7 @@ serve_dhcp_request (dhcp_message *msg, size_t len, dhcp_option *opts)
 
     else if (server_id) { // this request is an answer to the offer of another server
 
-	dhcp_binding binding = search_pending_binding(msg);
+	 binding = search_pending_assoc(msg);
 	release_binding(binding);
 
 	return NULL;
@@ -435,35 +437,46 @@ message_dispatcher (int s, struct sockaddr_in server_sock)
 	socklen_t slen = sizeof(client_sock);
 	size_t len;
 
-	dhcp_message message;
+	dhcp_message msg;
 	dhcp_message reply;
-	dhcp_option *opt;
+
+	LIST_HEAD(dhcp_option_entry_list, dhcp_option_entry) msg_opts;   // see queue(3)
+	LIST_HEAD(dhcp_option_entry_list, dhcp_option_entry) reply_opts; // see queue(3)
+
+	LIST_INIT(&msg_opts);   // see queue(3)
+	LIST_INIT(&reply_opts); // see queue(3)
 
 	dhcp_msg_type ret;
 
 	uint8_t *opts;
 	uint8_t type;
 
-	if ((len = dhcp_recv_message(s, &message, &client_sock, &slen)) < 0) {
+	if ((len = dhcp_recv_message(s, &msg, &client_sock, &slen)) < 0) {
 	    continue;
 	}
 
 	if (len < 300) { // TODO
-	    printf("%s.%u: request with invalid size received\n",
-		   inet_ntoa(client_sock.sin_addr), ntohs(client_sock.sin_port));
+	    log_error("%s.%u: request with invalid size received\n",
+		      inet_ntoa(client_sock.sin_addr), ntohs(client_sock.sin_port));
 	    continue;
 	}
 
-	if (message.op != BOOTREQUEST)
+	if (msg.op != BOOTREQUEST)
 	    continue;
 
-	if (memcmp(message.options, option_magic, sizeof(option_magic)) != 0) { // TODO
-	    printf("%s.%u: request with invalid option magic\n",
-		   inet_ntoa(client_sock.sin_addr), ntohs(client_sock.sin_port));
+	if(parse_options_to_list(&msg, len, &msg_opts) == 0) { // TODO: write this function
+	    log_error("%s.%u: request with invalid options\n",
+		      inet_ntoa(client_sock.sin_addr), ntohs(client_sock.sin_port));
 	    continue;
 	}
 
-	opts = message.options + sizeof(option_magic);
+	if (memcmp(msg.options, option_magic, sizeof(option_magic)) != 0) { // TODO
+	    log_error("%s.%u: request with invalid option magic\n",
+		      inet_ntoa(client_sock.sin_addr), ntohs(client_sock.sin_port));
+	    continue;
+	}
+
+	opts = msg.options + sizeof(option_magic);
 	opt = search_option(DHCP_MESSAGE_TYPE,
 			    len - DHCP_HEADER_SIZE - sizeof(option_magic), opts);
 
@@ -473,24 +486,24 @@ message_dispatcher (int s, struct sockaddr_in server_sock)
 	    continue;
 	}
 
-	init_dhcp_reply(&message, len, &reply);
+	init_dhcp_reply(&msg, len, &reply);
 
 	switch (opt->data[0]) {
 
 	case DHCPDISCOVER:
-            ret = serve_dhcp_discover(&message, len, &reply);
+            ret = serve_dhcp_discover(&msg, len, &reply);
 
 	case DHCPREQUEST:
-	    ret = serve_dhcp_request(&message, len, &reply);
+	    ret = serve_dhcp_request(&msg, len, &reply);
 
 	case DHCPDECLINE:
-	    ret = serve_dhcp_decline(&message, len, &reply);
+	    ret = serve_dhcp_decline(&msg, len, &reply);
 
 	case DHCPRELEASE:
-	    ret = serve_dhcp_release(&message, len, &reply);
+	    ret = serve_dhcp_release(&msg, len, &reply);
 
 	case DHCPINFORM:
-	    ret = serve_dhcp_inform(&message, len, &reply);
+	    ret = serve_dhcp_inform(&msg, len, &reply);
 
 	default:
 	    printf("%s.%u: request with invalid DHCP message type option\n",
