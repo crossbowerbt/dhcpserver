@@ -56,6 +56,27 @@ add_binding (uint32_t address, uint8_t *cident, uint8_t cident_len, int status, 
 }
 
 /*
+ * Get an available free address
+ *
+ * If a zero address is returned, no more address are available.
+ */
+
+uint32_t
+take_free_address (void)
+{
+    if(pool.current <= pool.last) {
+
+	uint32_t address = pool.current;
+	
+	pool.current = htonl(ntohl(pool.current) + 1);
+
+	return address;
+
+    } else
+	return 0;
+}
+
+/*
  * Functions to manipulate associations
  */
 
@@ -86,7 +107,8 @@ search_dynamic_assoc(dhcp_message *msg)
 	    assoc->status = EXPIRED;
 	}
 
-	if(memcmp(assoc->cident, msg->chaddr, ETHERNET_LEN) == 0) { // TODO: add support for client string identifier
+	if(!assoc->is_static &&
+	   memcmp(assoc->cident, msg->chaddr, ETHERNET_LEN) == 0) { // TODO: add support for client string identifier
 	    return assoc;
 	}
     }
@@ -120,6 +142,7 @@ new_dynamic_assoc(dhcp_message *msg, size_t len)
     }
 
     if(found_assoc != NULL &&
+       !found_assoc->is_static &&
        found_assoc->status != PENDING &&
        found_assoc->status != ASSOCIATED) { // the requested IP address is available
 
@@ -127,19 +150,27 @@ new_dynamic_assoc(dhcp_message *msg, size_t len)
 	
     } else if (found_assoc != NULL || ip_opt == NULL) { // the requested IP address is already in use, or no address requested
 
-	// TODO: search address, rewrap and check availability and full pool
+	uint32_t address = take_free_address();
 
-	found_assoc = add_binding(pool.current, msg->chaddr, ETHERNET_LEN, PENDING); // TODO: ascci identifier
+	if(address != 0)
+	    return add_binding(address, msg->chaddr, ETHERNET_LEN, PENDING); // TODO: ascii identifier
 
-	pool.current = htonl(ntohl(pool.current) + 1); // TODO: wrap
+	else { // reuse a previously assigned address
+    
+	    LIST_FOREACH_SAFE(assoc, pool.bindings, pointers, assoc_temp) {
+		if(!assoc->is_static && found_assoc->status != PENDING && found_assoc->status != ASSOCIATED)
+		    return assoc;
+	    }
 
-	return found_assoc;
+	    // if executions reach here no more addresses are available
+	    return NOP;
+	}
 
     } else if (ip_opt != NULL) { // the requested IP address is new, and available
 
 	// TODO: search address, rewrap and check availability and full pool
 
-	found_assoc = add_binding(*((uint32_t *)ip_opt->data), msg->chaddr, ETHERNET_LEN, PENDING); // TODO: ascci identifier
+	found_assoc = add_binding(*((uint32_t *)ip_opt->data), msg->chaddr, ETHERNET_LEN, PENDING); // TODO: ascii identifier
 
 	return found_assoc;
 	
@@ -152,7 +183,8 @@ new_dynamic_assoc(dhcp_message *msg, size_t len)
  * DHCP server functions
  */
 
-int init_dhcp_reply (dhcp_message *msg, size_t len, dhcp_message *reply)
+int
+init_dhcp_reply (dhcp_message *msg, size_t len, dhcp_message *reply)
 {
     reply->op = BOOTREPLY;
 
@@ -173,7 +205,8 @@ int init_dhcp_reply (dhcp_message *msg, size_t len, dhcp_message *reply)
     return 1;
 }
 
-int fill_requested_dhcp_options (dhcp_option *requested_opts, dhcp_option *opts_end, dhcp_option *dst, dhcp_option *dst_end)
+int
+fill_requested_dhcp_options (dhcp_option *requested_opts, dhcp_option *opts_end, dhcp_option *dst, dhcp_option *dst_end)
 {
     uint8_t *id = &requested_opts->data;
 
@@ -196,7 +229,8 @@ int fill_requested_dhcp_options (dhcp_option *requested_opts, dhcp_option *opts_
     return 1;
 }
 
-dhcp_msg_type prepare_dhcp_offer (dhcp_message *msg, size_t len, dhcp_message *reply, address_assoc *assoc)
+dhcp_msg_type
+prepare_dhcp_offer (dhcp_message *msg, size_t len, dhcp_message *reply, address_assoc *assoc)
 {
     // assign IP address
 
@@ -236,7 +270,8 @@ dhcp_msg_type prepare_dhcp_offer (dhcp_message *msg, size_t len, dhcp_message *r
     return DHCP_OFFER;
 }
 
-dhcp_msg_type serve_dhcp_discover (dhcp_message *msg, size_t len, dhcp_message *reply)
+dhcp_msg_type
+serve_dhcp_discover (dhcp_message *msg, size_t len, dhcp_message *reply)
 {  
     address_assoc *assoc = search_static_assoc(msg);
 
@@ -312,7 +347,8 @@ dhcp_msg_type serve_dhcp_discover (dhcp_message *msg, size_t len, dhcp_message *
     
 }
 
-dhcp_msg_type serve_dhcp_request (dhcp_message *msg, size_t len, dhcp_option *opts)
+dhcp_msg_type
+serve_dhcp_request (dhcp_message *msg, size_t len, dhcp_option *opts)
 {  
     uint32_t server_id = get_server_id(opts);
 
@@ -352,7 +388,8 @@ dhcp_msg_type serve_dhcp_request (dhcp_message *msg, size_t len, dhcp_option *op
 
 }
 
-dhcp_msg_type serve_dhcp_decline (dhcp_message *msg, size_t len, dhcp_option *opts)
+dhcp_msg_type
+serve_dhcp_decline (dhcp_message *msg, size_t len, dhcp_option *opts)
 {
     dhcp_binding binding = search_pending_binding(msg);
 
@@ -364,7 +401,8 @@ dhcp_msg_type serve_dhcp_decline (dhcp_message *msg, size_t len, dhcp_option *op
     return NULL;
 }
 
-dhcp_msg_type serve_dhcp_release (dhcp_message *msg, size_t len, dhcp_option *opts)
+dhcp_msg_type
+serve_dhcp_release (dhcp_message *msg, size_t len, dhcp_option *opts)
 {
     dhcp_binding binding = search_pending_binding(msg);
 
@@ -376,7 +414,8 @@ dhcp_msg_type serve_dhcp_release (dhcp_message *msg, size_t len, dhcp_option *op
     return NULL;
 }
 
-dhcp_msg_type serve_dhcp_inform (dhcp_message *msg, size_t len, dhcp_option *opts)
+dhcp_msg_type
+serve_dhcp_inform (dhcp_message *msg, size_t len, dhcp_option *opts)
 {
     // TODO
 
@@ -387,7 +426,8 @@ dhcp_msg_type serve_dhcp_inform (dhcp_message *msg, size_t len, dhcp_option *opt
  * Dispatch client DHCP messages to the correct handling routines
  */
 
-void message_dispatcher (sockaddr_in server_sock, int s)
+void
+message_dispatcher (int s, struct sockaddr_in server_sock)
 {
      
     while (1) {
@@ -396,7 +436,10 @@ void message_dispatcher (sockaddr_in server_sock, int s)
 	size_t len;
 
 	dhcp_message message;
+	dhcp_message reply;
 	dhcp_option *opt;
+
+	dhcp_msg_type ret;
 
 	uint8_t *opts;
 	uint8_t type;
@@ -430,22 +473,24 @@ void message_dispatcher (sockaddr_in server_sock, int s)
 	    continue;
 	}
 
+	init_dhcp_reply(&message, len, &reply);
+
 	switch (opt->data[0]) {
 
 	case DHCPDISCOVER:
-            serve_dhcp_discover(message, len, opts);
+            ret = serve_dhcp_discover(&message, len, &reply);
 
 	case DHCPREQUEST:
-	    serve_dhcp_request(message, len, opts);
+	    ret = serve_dhcp_request(&message, len, &reply);
 
 	case DHCPDECLINE:
-	    serve_dhcp_decline(message, len, opts);
+	    ret = serve_dhcp_decline(&message, len, &reply);
 
 	case DHCPRELEASE:
-	    serve_dhcp_release(message, len, opts);
+	    ret = serve_dhcp_release(&message, len, &reply);
 
 	case DHCPINFORM:
-	    serve_dhcp_inform(message, len, opts);
+	    ret = serve_dhcp_inform(&message, len, &reply);
 
 	default:
 	    printf("%s.%u: request with invalid DHCP message type option\n",
@@ -454,11 +499,15 @@ void message_dispatcher (sockaddr_in server_sock, int s)
 	
 	}
 
+	if(ret != NOP)
+	    send_dhcp_reply(s, server_sock, client_sock, &reply);
+
     }
 
 }
 
-int main (int argc, char *argv[])
+int
+main (int argc, char *argv[])
 {
     int s;
     uint16_t port;
@@ -507,7 +556,7 @@ int main (int argc, char *argv[])
 
      /* Message processing loop */
      
-     message_dispatcher(server_sock, s);
+     message_dispatcher(s, server_sock);
 
      close(s);
 
