@@ -108,7 +108,8 @@ static struct {
 
 /* Value parsing functions */
 
-int parse_byte (char *s, void **p)
+int
+parse_byte (char *s, void **p)
 {
     *p = malloc(sizeof(uint8_t));
     **p = ((uint8_t) strtol(s, NULL, 0));
@@ -116,7 +117,8 @@ int parse_byte (char *s, void **p)
     return sizeof(uint8_t);
 }
 
-int parse_byte_list (char *s, void **p)
+int
+parse_byte_list (char *s, void **p)
 {
     *p = malloc(strlen(s) * sizeof(uint8_t)); // slightly over the strictly requested size
 
@@ -140,7 +142,8 @@ int parse_byte_list (char *s, void **p)
     return count;
 }
 
-int parse_short (char *s, void **p)
+int
+parse_short (char *s, void **p)
 {
     *p = malloc(sizeof(uint16_t));
     **p = ((uint16_t) strtol(s, NULL, 0));
@@ -148,7 +151,8 @@ int parse_short (char *s, void **p)
     return sizeof(uint16_t);
 }
 
-int parse_short_list (char *s, void **p)
+int
+parse_short_list (char *s, void **p)
 {
     *p = malloc(strlen(s) * sizeof(uint16_t)); // slightly over the strictly requested size
 
@@ -172,7 +176,8 @@ int parse_short_list (char *s, void **p)
     return count;
 }
 
-int parse_long (char *s, void **p)
+int
+parse_long (char *s, void **p)
 {
     *p = malloc(sizeof(uint32_t));
     **p = strtol(s, NULL, 0);
@@ -180,14 +185,16 @@ int parse_long (char *s, void **p)
     return sizeof(uint32_t);
 }
 
-int parse_string (char *s, void **p)
+int
+parse_string (char *s, void **p)
 {
     *p = strdup(s);
 
     return strlen(s);
 }
 
-int parse_ip (char *s, void **p)
+int
+parse_ip (char *s, void **p)
 {
     struct sockaddr_in ip;
     
@@ -203,7 +210,8 @@ int parse_ip (char *s, void **p)
     return sizeof(uint32_t);
 }
 
-int parse_ip_list (char *s, void **p)
+int
+parse_ip_list (char *s, void **p)
 {
     *p = malloc(strlen(s) * sizeof(uint32_t) / 4); // slightly over the strictly required size
 
@@ -231,7 +239,8 @@ int parse_ip_list (char *s, void **p)
     return count;
 }
 
-int parse_mac (char *s, void **p)
+int
+parse_mac (char *s, void **p)
 {
     *p = malloc(6);
     int i;
@@ -266,7 +275,8 @@ int parse_mac (char *s, void **p)
  * On success return the parsed option id,
  * otherwise return zero.
  */
-uint8_t parse_option (dhcp_option *opt, char *name, char *value)
+uint8_t
+parse_option (dhcp_option *opt, char *name, char *value)
 {
     (int (*f)) (char *, void **);
     int code;
@@ -309,7 +319,8 @@ uint8_t parse_option (dhcp_option *opt, char *name, char *value)
  *
  * Returns a pointer to the byte just after the copied option.
  */
-uint8_t * copy_option (uint8_t *dst, dhcp_option *opt)
+uint8_t *
+copy_option (uint8_t *dst, dhcp_option *opt)
 {
     memcpy(dst, opt, 2 + opt->len);
     return ((uint8_t *) dst) + 2 + opt->len;
@@ -322,7 +333,8 @@ uint8_t * copy_option (uint8_t *dst, dhcp_option *opt)
  * If the option is not present, or an END option is reached,
  * the function returns NULL.
  */
-uint8_t * search_option (uint8_t *buf, size_t buf_len, uint8_t id)
+uint8_t *
+search_option (uint8_t *buf, size_t buf_len, uint8_t id)
 {
     dhcp_option *opt = buf, *end = buf + buf_len;
 

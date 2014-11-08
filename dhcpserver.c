@@ -32,7 +32,8 @@ address_pool pool;
  * and a pointer to the binding is returned for further manipulations.
  */
 
-address_binding *add_binding (uint32_t address, uint8_t cident_len, uint8_t *cident, int status, int flags)
+address_binding *
+add_binding (uint32_t address, uint8_t *cident, uint8_t cident_len, int status, int flags)
 {
     // fill binding
 
@@ -67,7 +68,8 @@ search_static_assoc(dhcp_message *msg)
 	    assoc->status = EXPIRED;
 	}
 
-	if(assoc->is_static && memcmp(assoc->cident, msg->chaddr, ETHERNET_LEN)) { // TODO: add support for client string identifier
+	if(assoc->is_static &&
+	   memcmp(assoc->cident, msg->chaddr, ETHERNET_LEN) == 0) { // TODO: add support for client string identifier
 	    return assoc;
 	}
     }
@@ -84,7 +86,7 @@ search_dynamic_assoc(dhcp_message *msg)
 	    assoc->status = EXPIRED;
 	}
 
-	if(memcmp(assoc->cident, msg->chaddr, ETHERNET_LEN)) { // TODO: add support for client string identifier
+	if(memcmp(assoc->cident, msg->chaddr, ETHERNET_LEN) == 0) { // TODO: add support for client string identifier
 	    return assoc;
 	}
     }
@@ -95,19 +97,54 @@ search_dynamic_assoc(dhcp_message *msg)
 address_assoc *
 new_dynamic_assoc(dhcp_message *msg, size_t len)
 {
+    address_assoc *found_assoc = NULL;
+    dhcp_option *ip_opt = NULL;
     int found = 0;
+
+    ip_opt = search_option (msg->options, len - DHCP_HEADER_SIZE, REQUESTED_IP_ADDRESS);
+
+    if (ip_opt && ip_opt->len == 4 &&
+	((uint8_t *)ip_opt) + 6 < ((uint8_t *)msg) + len) { // search for the requested address
     
-    LIST_FOREACH_SAFE(assoc, pool.bindings, pointers, assoc_temp) {
+	LIST_FOREACH_SAFE(assoc, pool.bindings, pointers, assoc_temp) {
 
-	if(assoc->assoc_time + assoc->lease_time < time()) { // update status of expired entries
-	    assoc->status = EXPIRED;
+	    if(assoc->assoc_time + assoc->lease_time < time()) { // update status of expired entries
+		assoc->status = EXPIRED;
+	    }
+
+	    if(memcmp(assoc->address, ip_opt->data, 4) == 0) { // TODO: add support for client string identifier
+		found_assoc = assoc;
+	    }
 	}
 
-	if(assoc->address == msg->memcmp(assoc->cident, msg->chaddr, ETHERNET_LEN)) { // TODO: add support for client string identifier
-	    return assoc;
-	}
     }
 
+    if(found_assoc != NULL &&
+       found_assoc->status != PENDING &&
+       found_assoc->status != ASSOCIATED) { // the requested IP address is available
+
+	return found_assoc;
+	
+    } else if (found_assoc != NULL || ip_opt == NULL) { // the requested IP address is already in use, or no address requested
+
+	// TODO: search address, rewrap and check availability and full pool
+
+	found_assoc = add_binding(pool.current, msg->chaddr, ETHERNET_LEN, PENDING); // TODO: ascci identifier
+
+	pool.current = htonl(ntohl(pool.current) + 1); // TODO: wrap
+
+	return found_assoc;
+
+    } else if (ip_opt != NULL) { // the requested IP address is new, and available
+
+	// TODO: search address, rewrap and check availability and full pool
+
+	found_assoc = add_binding(*((uint32_t *)ip_opt->data), msg->chaddr, ETHERNET_LEN, PENDING); // TODO: ascci identifier
+
+	return found_assoc;
+	
+    }
+ 
     return NULL;
 }
 
