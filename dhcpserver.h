@@ -17,12 +17,6 @@ enum {
     RELEASED
 };
 
-// binding flags
-enum {
-    PENDING = 1,  // offered to client, waiting request
-    STATIC = 2    // configured as a static binding
-};
-
 struct address_binding {
     uint32_t address;     // address
     uint8_t cident_len;   // client identifier len
@@ -32,7 +26,7 @@ struct address_binding {
     time_t lease_time;    // duration of lease
 
     int status;           // binding status
-    int flags;            // binding flags
+    int is_static;        // check if it is a static binding
 
     LIST_ENTRY(address_bindings) pointers; // list pointers, see queue(3)
 };
