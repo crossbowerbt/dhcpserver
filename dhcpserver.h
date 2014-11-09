@@ -3,35 +3,7 @@
 #include <sys/queue.h>
 
 #include "options.h"
-
-/*
- *  Single address binding stuff...
- */
-
-// binding status
-enum {
-    EMPTY = 0,
-    ASSOCIATED,
-    PENDING,
-    EXPIRED,
-    RELEASED
-};
-
-struct address_binding {
-    uint32_t address;     // address
-    uint8_t cident_len;   // client identifier len
-    uint8_t cident[256];  // client identifier
-    
-    time_t assoc_time;    // time of association
-    time_t lease_time;    // duration of lease
-
-    int status;           // binding status
-    int is_static;        // check if it is a static binding
-
-    LIST_ENTRY(address_bindings) pointers; // list pointers, see queue(3)
-};
-
-typedef struct address_binding address_binding;
+#include "bindings.h"
 
 /*
  * Global association pool.
@@ -48,9 +20,7 @@ struct address_pool {
     uint32_t netmask;   // network mask
     uint32_t gateway;   // network gateway
 
-    uint32_t first;     // first address of the pool
-    uint32_t last;      // last address of the pool
-    uint32_t current;   // current unallocated address
+    pool_indexes indexes;  // used to delimitate a pool of available addresses
 
     time_t lease_time;      // default duration of a lease
     time_t max_lease_time;  // max acceptable lease time
