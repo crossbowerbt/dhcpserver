@@ -2,6 +2,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <sys/queue.h>
 #include <netdb.h>
 
 #include <stdio.h>
@@ -336,7 +337,7 @@ copy_option (uint8_t *dst, dhcp_option *opt)
 uint8_t *
 search_option (uint8_t *buf, size_t buf_len, uint8_t id)
 {
-    dhcp_option *opt = buf, *end = buf + buf_len;
+    dhcp_option *opt = buf, *end = ((uint8_t *)buf) + buf_len;
 
     while (opt < end && opt->id != id && opt->id != END) {
         opt = ((uint8_t *) opt) + 2 + opt->len;
@@ -355,15 +356,38 @@ search_option (uint8_t *buf, size_t buf_len, uint8_t id)
  */
 
 int
-parse_options_to_list (dhcp_message *msg, size_t len, void *list)
+parse_options_to_list (LIST_HEAD *head, dhcp_option *opts, size_t len)
 {
-    
-    LIST_INSERT_AFTER(TYPE *listelm, TYPE *elm, LIST_ENTRY NAME);
+    dhcp_option *opt, *end;
+    int first = 1;
 
-         n1 = malloc(sizeof(struct entry));      /* Insert at the head. */
-     LIST_INSERT_HEAD(&head, n1, entries);
+    dhcp_option_entry *opt_e = NULL, *opt_e_prev = NULL;
 
-     n2 = malloc(sizeof(struct entry));      /* Insert after. */
-    
-    return 1;
+    opt = opts;
+    end = ((uint8_t *)opts) + len;
+
+    while (opt < end  &&
+	   opt->id != END) {
+
+	if (((uint8_t *) opt) + 2 + opt->len >= end) { // the len field is too long
+	    return 0;
+	}
+
+	opt_e = calloc(1, sizeof(*opt_e));
+
+	memcpy(&opt_e->option, opt, 2 + opt->len);
+	
+	if(opt_e_prev == NULL)
+	    LIST_INSERT_HEAD(head, opt_e, pointers);
+	else
+	    LIST_INSERT_AFTER(opt_e_prev, opt_e, pointers);
+
+	opt_e_prev = opt_e;
+        opt = ((uint8_t *) opt) + 2 + opt->len;
+    }
+
+    if (opt < end && opt->id == END)
+        return 1;
+
+    return 0;
 }
