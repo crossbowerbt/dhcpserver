@@ -391,3 +391,41 @@ parse_options_to_list (LIST_HEAD *head, dhcp_option *opts, size_t len)
 
     return 0;
 }
+
+/*
+ * Serialize a list of options, to be inserted directly inside
+ * the options section of a DHCP message.
+ *
+ * Return 0 on error, the total serialized len on success.
+ */
+
+int
+serialize_option_list (LIST_HEAD *head, uint8_t *buf, size_t len)
+{
+    uint8_t *p = buf;
+
+    if (len < 4)
+	return 0;
+
+    memcpy(p, option_magic, sizeof(option_magic));
+    p += 4; len -= 4;
+    
+    LIST_FOREACH_SAFE(opt, head, pointers, opt_temp) {
+
+	if (len <= 2 + opt->len)
+	    return 0;
+
+	memcpy(p, opt, 2 + opt->len);
+	p   += 2 + opt->len;
+	len -= 2 + opt->len;
+	
+    }
+
+    if (len < 1)
+	return 0;
+
+    p++; len--;
+
+    return p - buf;
+}
+
