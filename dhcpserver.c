@@ -53,6 +53,12 @@ init_dhcp_reply (dhcp_message *msg, size_t len, dhcp_message *reply)
 }
 
 int
+finalize_dhcp_reply (dhcp_message *reply, STAILQ_HEAD *options)
+{
+    return serialize_option_list(options, reply->options, sizeof(reply->options));
+}
+
+int
 fill_requested_dhcp_options (dhcp_option *requested_opts, dhcp_option *opts_end, dhcp_option *dst, dhcp_option *dst_end)
 {
     uint8_t *id = &requested_opts->data;
