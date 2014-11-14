@@ -1,3 +1,6 @@
+#ifndef DHCP_H
+#define DHCP_H
+
 #include <stdint.h>
 
 enum op_types {
@@ -43,3 +46,4 @@ struct dhcp_message {
 
 typedef struct dhcp_message dhcp_message;
 
+#endif

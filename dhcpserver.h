@@ -1,3 +1,6 @@
+#ifndef DHCPSERVER_H
+#define DHCPSERVER_H
+
 #include <stdint.h>
 #include <time.h>
 #include <sys/queue.h>
@@ -32,3 +35,5 @@ struct address_pool {
 };
 
 typedef struct address_pool pool;
+
+#endif

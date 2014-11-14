@@ -1,3 +1,6 @@
+#ifndef BINDINGS_H
+#define BINDINGS_H
+
 #include <stdint.h>
 #include <time.h>
 #include <sys/queue.h>
@@ -70,3 +73,5 @@ void update_bindings_statuses (LIST_HEAD *head);
 
 address_assoc *search_assoc (LIST_HEAD *head, uint8_t *cident, uint8_t cident_len, int is_static);
 address_assoc *new_dynamic_assoc (LIST_HEAD *head, pool_indexes *indexes, uint32_t address, uint8_t *cident, uint8_t cident_len);
+
+#endif

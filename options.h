@@ -1,3 +1,6 @@
+#ifndef OPTIONS_H
+#define OPTIONS_H
+
 #include <stdint.h>
 #include <time.h>
 #include <sys/queue.h>
@@ -163,3 +166,4 @@ dhcp_option * parse_option (dhcp_option *_opt, char *_name, char *_value);
 uint8_t * copy_option (uint8_t *_dst, dhcp_option *_opt);
 uint8_t * search_option (uint8_t *_buf, size_t _buf_len, uint8_t _id);
 
+#endif
