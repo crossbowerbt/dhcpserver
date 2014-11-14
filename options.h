@@ -133,7 +133,7 @@ typedef struct dhcp_option dhcp_option;
 struct dhcp_option_entry {
     dhcp_option *option;
 
-    LIST_ENTRY(dhcp_option_entry) pointers; // list pointers, see queue(3)
+    STAILQ_ENTRY(dhcp_option_entry) pointers; // pointers, see queue(3)
 };
 
 typedef struct dhcp_option_entry dhcp_option_entry;

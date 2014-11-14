@@ -287,11 +287,11 @@ message_dispatcher (int s, struct sockaddr_in server_sock)
 	dhcp_message msg;
 	dhcp_message reply;
 
-	LIST_HEAD(dhcp_option_entry_list, dhcp_option_entry) msg_opts;   // see queue(3)
-	LIST_HEAD(dhcp_option_entry_list, dhcp_option_entry) reply_opts; // see queue(3)
+	STAILQ_HEAD(dhcp_option_entry_list, dhcp_option_entry) msg_opts;   // see queue(3)
+	STAILQ_HEAD(dhcp_option_entry_list, dhcp_option_entry) reply_opts; // see queue(3)
 
-	LIST_INIT(&msg_opts);   // see queue(3)
-	LIST_INIT(&reply_opts); // see queue(3)
+	STAILQ_INIT(&msg_opts);   // see queue(3)
+	STAILQ_INIT(&reply_opts); // see queue(3)
 
 	dhcp_msg_type ret;
 

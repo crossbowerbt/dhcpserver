@@ -328,25 +328,33 @@ copy_option (uint8_t *dst, dhcp_option *opt)
 }
 
 /*
- * Given the options field of a DHCP message, search an option having
+ * Given a list of options search an option having
  * the passed option id, and returns a pointer to it.
  *
- * If the option is not present, or an END option is reached,
- * the function returns NULL.
+ * If the option is not present the function returns NULL.
  */
-uint8_t *
-search_option (uint8_t *buf, size_t buf_len, uint8_t id)
-{
-    dhcp_option *opt = buf, *end = ((uint8_t *)buf) + buf_len;
 
-    while (opt < end && opt->id != id && opt->id != END) {
-        opt = ((uint8_t *) opt) + 2 + opt->len;
+dhcp_option *
+search_option (STAILQ_HEAD *head, uint8_t id)
+{
+    STAILQ_FOREACH_SAFE(opt, head, pointers, opt_temp) {
+
+	if(opt->id == id)
+	    return opt;
+
     }
 
-    if (opt < end && opt->id == id)
-        return opt;
-
     return NULL;
+}
+
+/*
+ * Append the provided option to the list.
+ */
+
+void
+append_option (STAILQ_HEAD *head, dhcp_option *opt)
+{
+    STAILQ_INSERT_TAIL(head, opt, pointers);
 }
 
 /*
@@ -356,12 +364,9 @@ search_option (uint8_t *buf, size_t buf_len, uint8_t id)
  */
 
 int
-parse_options_to_list (LIST_HEAD *head, dhcp_option *opts, size_t len)
+parse_options_to_list (STAILQ_HEAD *head, dhcp_option *opts, size_t len)
 {
     dhcp_option *opt, *end;
-    int first = 1;
-
-    dhcp_option_entry *opt_e = NULL, *opt_e_prev = NULL;
 
     opt = opts;
     end = ((uint8_t *)opts) + len;
@@ -369,20 +374,11 @@ parse_options_to_list (LIST_HEAD *head, dhcp_option *opts, size_t len)
     while (opt < end  &&
 	   opt->id != END) {
 
-	if (((uint8_t *) opt) + 2 + opt->len >= end) { // the len field is too long
+	if (((uint8_t *) opt) + 2 + opt->len >= end) // the len field is too long
 	    return 0;
-	}
 
-	opt_e = calloc(1, sizeof(*opt_e));
+	STAILQ_INSERT_TAIL(head, opt, pointers);
 
-	memcpy(&opt_e->option, opt, 2 + opt->len);
-	
-	if(opt_e_prev == NULL)
-	    LIST_INSERT_HEAD(head, opt_e, pointers);
-	else
-	    LIST_INSERT_AFTER(opt_e_prev, opt_e, pointers);
-
-	opt_e_prev = opt_e;
         opt = ((uint8_t *) opt) + 2 + opt->len;
     }
 
@@ -400,7 +396,7 @@ parse_options_to_list (LIST_HEAD *head, dhcp_option *opts, size_t len)
  */
 
 int
-serialize_option_list (LIST_HEAD *head, uint8_t *buf, size_t len)
+serialize_option_list (STAILQ_HEAD *head, uint8_t *buf, size_t len)
 {
     uint8_t *p = buf;
 
@@ -410,7 +406,7 @@ serialize_option_list (LIST_HEAD *head, uint8_t *buf, size_t len)
     memcpy(p, option_magic, sizeof(option_magic));
     p += 4; len -= 4;
     
-    LIST_FOREACH_SAFE(opt, head, pointers, opt_temp) {
+    STAILQ_FOREACH_SAFE(opt, head, pointers, opt_temp) {
 
 	if (len <= 2 + opt->len)
 	    return 0;
@@ -429,3 +425,8 @@ serialize_option_list (LIST_HEAD *head, uint8_t *buf, size_t len)
     return p - buf;
 }
 
+void
+delete_option_list (STAILQ_HEAD *head)
+{
+    // TODO: maybe not necessary...
+}
