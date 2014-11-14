@@ -73,18 +73,23 @@ update_bindings_statuses (LIST_HEAD *head)
  * Search a static or dynamic association having the given client identifier.
  *
  * If the is_static option is true a static association will be searched,
- * otherwise a dynamic one...
+ * otherwise a dynamic one. If status is not zero, an association with that
+ * status will be searched.
  */
 
 address_assoc *
-search_assoc (LIST_HEAD *head, uint8_t *cident, uint8_t cident_len, int is_static)
+search_assoc (LIST_HEAD *head, uint8_t *cident, uint8_t cident_len, int is_static, int status)
 {
     LIST_FOREACH_SAFE(assoc, head, pointers, assoc_temp) {
 
-	if(assoc->is_static == is_static &&
+	if((assoc->is_static == is_static || is_static == DONT_CARE) &&
 	   assoc->cident_len == cident_len &&
 	   memcmp(assoc->cident, cident, cident_len) == 0) {
-	    return assoc;
+
+	    if(status == 0)
+		return assoc;
+	    else if(status == assoc->status)
+		return assoc;
 	}
     }
 

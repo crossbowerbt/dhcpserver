@@ -8,6 +8,13 @@
  * Header to manage the database of address bindings.
  */
 
+// static association or dynamic
+enum {
+    DYNAMIC   = 0,
+    STATIC    = 1,
+    DONT_CARE = 2
+}
+
 // binding status
 enum {
     EMPTY = 0,

@@ -120,7 +120,7 @@ prepare_dhcp_offer_or_ack (dhcp_message *msg, size_t len, dhcp_message *reply, a
 dhcp_msg_type
 serve_dhcp_discover (dhcp_message *msg, size_t len, dhcp_message *reply)
 {  
-    address_assoc *assoc = search_static_assoc(msg);
+    address_assoc *assoc = search_assoc(pool.bindings, msg->chaddr, 6, STATIC, EMPTY);
 
     if (assoc) { // a static association has been configured for this client
 
@@ -144,7 +144,7 @@ serve_dhcp_discover (dhcp_message *msg, size_t len, dhcp_message *reply)
         /* If an address is available, the new address
            SHOULD be chosen as follows: */
 
-        assoc = search_dynamic_assoc(msg);
+	assoc = search_assoc(pool.bindings, msg->chaddr, 6, DYNAMIC, EMPTY);
 
         if (assoc) {
 
@@ -178,7 +178,10 @@ serve_dhcp_discover (dhcp_message *msg, size_t len, dhcp_message *reply)
 	       the message was received (if 'giaddr' is 0) or on the address of
 	       the relay agent that forwarded the message ('giaddr' when not 0). */
 
-	    assoc = new_dynamic_assoc(msg, len);
+	    // TODO: extract requested IP address
+	    address = search_option...
+
+	    assoc = new_dynamic_assoc (pool.bindings, pool.indexes, address, msg->chaddr, 6);
 
 	    if (assoc == NULL) {
 		log_info("Can not offer an address to '%s', no address available.",
@@ -196,23 +199,20 @@ serve_dhcp_discover (dhcp_message *msg, size_t len, dhcp_message *reply)
 
 dhcp_msg_type
 serve_dhcp_request (dhcp_message *msg, size_t len, dhcp_option *opts)
-{  
-    uint32_t server_id = get_server_id(opts);
+{
+    // TODO: get SERVER_IDENTIFIER from options or error...
 
+    address_assoc *assoc = search_assoc(pool.bindings, msg->chaddr, 6, DONT_CARE, PENDING);
     
-address_assoc *assoc
     if (server_id == pool.server_id) { // this request is an answer to our offer
-	
-	dhcp_binding binding = search_pending_binding(msg);
 
-	if (binding) {
+	if (assoc != NULL) {
 
-	    commit_binding(binding);
+	    assoc->status = ASSOCIATED;
 	    return prepare_dhcp_ack(msg, opts);
 	    
 	} else {
 
-	    release_binding(binding);
 	    return prepare_dhcp_nak(msg, opts);
 
 	}
@@ -221,17 +221,15 @@ address_assoc *assoc
 
     else if (server_id) { // this request is an answer to the offer of another server
 
-	 binding = search_pending_assoc(msg);
-	release_binding(binding);
-
-	return NULL;
+	assoc->status = EMPTY;
+	return NOP;
 
     }
 
     else {
 
 	// TODO: other cases
-	return NULL;
+	return NOP;
 
     }
 
@@ -240,27 +238,29 @@ address_assoc *assoc
 dhcp_msg_type
 serve_dhcp_decline (dhcp_message *msg, size_t len, dhcp_option *opts)
 {
-    dhcp_binding binding = search_pending_binding(msg);
+    address_assoc *assoc = search_assoc(pool.bindings, msg->chaddr, 6, 0, PENDING);
+    
+    log_info("Released address by '%s' of address '%s', %sin database.",
+	     str_mac(msg->chaddr), str_ip(assoc->address),
+	     assoc == NULL ? "not " , "");
 
-    log_error("Declined address by '%s' of address '%s'",
-	      str_mac(msg->chaddr), str_ip(assoc->address));
+    assoc->status = EMPTY;
 
-    release_binding(binding);
-
-    return NULL;
+    return NOP;
 }
 
 dhcp_msg_type
 serve_dhcp_release (dhcp_message *msg, size_t len, dhcp_option *opts)
 {
-    dhcp_binding binding = search_pending_binding(msg);
+    address_assoc *assoc = search_assoc(pool.bindings, msg->chaddr, 6, 0, ASSOCIATED);
+    
+    log_info("Released address by '%s' of address '%s', %sassociated.",
+	     str_mac(msg->chaddr), str_ip(assoc->address),
+	     assoc == NULL ? "not " , "");
 
-    log_info("Released address by '%s' of address '%s'",
-	      str_mac(msg->chaddr), str_ip(assoc->address));
+    assoc->status = RELEASED;
 
-    release_binding(binding);
-
-    return NULL;
+    return NOP;
 }
 
 dhcp_msg_type
@@ -268,7 +268,7 @@ serve_dhcp_inform (dhcp_message *msg, size_t len, dhcp_option *opts)
 {
     // TODO
 
-    return NULL;
+    return NOP;
 }
 
 /*
