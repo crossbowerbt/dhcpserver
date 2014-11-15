@@ -82,7 +82,7 @@ search_assoc (LIST_HEAD *head, uint8_t *cident, uint8_t cident_len, int is_stati
 {
     LIST_FOREACH_SAFE(assoc, head, pointers, assoc_temp) {
 
-	if((assoc->is_static == is_static || is_static == DONT_CARE) &&
+	if((assoc->is_static == is_static || is_static == STATIC_OR_DYNAMIC) &&
 	   assoc->cident_len == cident_len &&
 	   memcmp(assoc->cident, cident, cident_len) == 0) {
 

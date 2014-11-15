@@ -36,4 +36,16 @@ struct address_pool {
 
 typedef struct address_pool pool;
 
+/*
+ * Internal representation of a DHCP message,
+ * with options parsed into a list...
+ */
+
+struct dhcp_msg {
+    dhcp_message *hdr;
+    STAILQ_HEAD(dhcp_option_entry_list, dhcp_option_entry) opts;
+};
+
+typedef struct dhcp_msg dhcp_msg;
+
 #endif

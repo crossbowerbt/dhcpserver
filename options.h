@@ -17,8 +17,6 @@ enum dhcp_msg_type {
      DHCP_ACK      = 4,
      DHCP_NAK      = 5,
      DHCP_INFORM   = 6,
-     
-     NOP, // not a DHCP code, used to signal errors in the server...
 };
 
 enum {

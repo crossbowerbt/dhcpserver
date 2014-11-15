@@ -13,9 +13,9 @@
 
 // static association or dynamic
 enum {
-    DYNAMIC   = 0,
-    STATIC    = 1,
-    DONT_CARE = 2
+    DYNAMIC = 0,
+    STATIC  = 1,
+    STATIC_OR_DYNAMIC = 2
 }
 
 // binding status

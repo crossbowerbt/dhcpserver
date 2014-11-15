@@ -27,111 +27,109 @@
 address_pool pool;
 
 /*
- * DHCP server functions
+ * Expand a dhcp message into the internal representation.
+ *
+ * Return the message type on success, 0 on failure.
  */
 
-int
-init_dhcp_reply (dhcp_message *msg, size_t len, dhcp_message *reply)
+uint8_t
+expand_msg (dhcp_msg *request, size_t len)
 {
-    reply->op = BOOTREPLY;
+    STAILQ_INIT(&request.opts);
+    
+    if (request->hdr.hlen < 1 || request->hdr.hlen > 16)
+	return 0;
 
-    reply->htype = ETHERNET;
-    reply->hlen  = ETHERNET_LEN;
+    if(parse_options_to_list(&request->opts, request->hdr.options,
+			     len - DHCP_HEADER_SIZE) == 0)
+	return 0;
+    
+    dhcp_option *type_opt = search_option(&request->opts, DHCP_MESSAGE_TYPE);
+    
+    if (type_opt == NULL)
+	return 0;
 
-    reply->xid = msg->xid;
-    reply->secs = msg->secs;
+    uint8_t type = type_opt->data[0];
+    
+    return type;
+}
+
+int
+init_reply (dhcp_msg *request, dhcp_msg *reply)
+{
+    memset(&reply->hdr, 0, sizeof(reply->hdr));
+
+    STAILQ_INIT(&reply->opts);
+    
+    reply->hdr.op = BOOTREPLY;
+
+    reply->hdr.htype = request->hdr.htype;
+    reply->hdr.hlen  = request->hdr.hlen;
+
+    reply->hdr.xid   = request->hdr.xid;
+    reply->hdr.flags = request->hdr.flags;
      
-    // TODO: flags for multicast
-    // see RFC
-
-    // TODO: relay ip agent
-    // see RFC
-
-    memcpy(&reply->chaddr, &msg->chaddr, sizeof(msg->chaddr));
+    reply->hdr.giaddr = request->hdr.giaddr;
+    
+    memcpy(reply->hdr.chaddr, request->hdr.chaddr, request->hdr.hlen);
 
     return 1;
 }
 
-int
-finalize_dhcp_reply (dhcp_message *reply, STAILQ_HEAD *options)
+void
+fill_requested_dhcp_options (dhcp_option *requested_opts, STAILQ_HEAD *reply_opts)
 {
-    return serialize_option_list(options, reply->options, sizeof(reply->options));
-}
+    uint8_t len = requested_opts->len;
+    uint8_t *id = requested_opts->data;
 
-int
-fill_requested_dhcp_options (dhcp_option *requested_opts, dhcp_option *opts_end, dhcp_option *dst, dhcp_option *dst_end)
-{
-    uint8_t *id = &requested_opts->data;
-
-    uint8_t *end = opts_end < id + requested_opts->len ? 
-	opts_end :
-	id + requested_opts->len;
-	
-    for (; id < end; id++) {
+    int i;
+    for (i = 0; i < len; i++) {
 	    
-	if(pool.options[*id].id != 0) {
-		
-	    if(dst + pool.options[*id].len + 2 > dst_end) // check bounds for our reply buffer
-		return 0;
-		
-	    dst = copy_option (dst, &pool.options[*id]); // set requested option
+	if(id[i] != 0) {
+	    dhcp_option *opt = search_option(pool.options, id);
+	    if(opt != NULL)
+		append_option(reply_opts, opt);
 	}
 	    
     }
-
-    return 1;
 }
 
 dhcp_msg_type
-prepare_dhcp_offer_or_ack (dhcp_message *msg, size_t len, dhcp_message *reply, address_assoc *assoc, dhcp_message_type type)
+fill_dhcp_reply (dhcp_msg *request, dhcp_msg *reply,
+		 address_binding *assoc, uint8_t type)
 {
-    // assign IP address
+    static dhcp_option type_opt, lease_time_opt;
 
-    reply->yiaddr = htonl(assoc->address);
-    reply->siaddr = htonl(pool.server_id);
+    type_opt = { DHCP_MESSAGE_TYPE, 1, type };
+    append_option(&reply->opts, &type_opt);
 
-    /* Begin filling of options */
+    if(assoc != NULL) {
+	reply->hdr.yiaddr = htonl(assoc->address);
 
-    dhcp_option *opts = msg->options;
-    dhcp_option *opts_end = ((uint8_t *)msg) + len;
-    
-    dhcp_option *dst = &reply.options;
-    uint8_t  *dst_end = reply + sizeof(*reply);
-
-    memcpy(dst, option_magic, 4); // set option magic bytes
-    dst = ((uint8_t *)dst) + 4;
-
-    dhcp_option type = { DHCP_MESSAGE_TYPE, 1, type };
-    
-    dhcp_option *requested_opts = search_option(opts, len - DHCP_HEADER_SIZE, PARAMETER_REQUEST_LIST);
-
-    if (requested_opts) {
-
-	dst = fill_requested_dhcp_options (requested_opts, opts_end, dst, dst_end);
-
-	if(dst == NULL) // no more space on reply message...
-	    return NOP;
-	
+	lease_time_opt = { IP_ADDRESS_LEASE_TIME, 4, htonl(assoc->lease_time) };
+	append_option(&reply->opts, &lease_time_opt);
     }
-
-    if(((uint8_t *)dst) + 1 > dst_end)
-	return NOP;
-
-    // write end option
-    memcpy(dst, END, 1);
     
-    return DHCP_OFFER;
+    if (type != DHCP_NAK) {
+	dhcp_option *requested_opts = search_option(msg_opts, PARAMETER_REQUEST_LIST);
+
+	if (requested_opts)
+	    fill_requested_dhcp_options (requested_opts, reply_opts);
+    }
+    
+    return type;
 }
 
 dhcp_msg_type
-serve_dhcp_discover (dhcp_message *msg, size_t len, dhcp_message *reply)
+serve_dhcp_discover (dhcp_msg *request, dhcp_msg *reply)
 {  
-    address_assoc *assoc = search_assoc(pool.bindings, msg->chaddr, 6, STATIC, EMPTY);
+    address_assoc *assoc = search_assoc(pool.bindings, request->hdr.chaddr,
+					request->hdr.hlen, STATIC, EMPTY);
 
     if (assoc) { // a static association has been configured for this client
 
-        log_info("Offer to '%s' of static address '%s', current status '%s', %sexpired",
-                 str_mac(msg->chaddr), str_ip(assoc->address),
+        log_info("Offer %s to %s (static), %s status %sexpired",
+                 str_ip(assoc->address), str_mac(request->hdr.chaddr),
                  str_status(assoc->status),
                  assoc->assoc_time + assoc->lease_time < time() ? "" : "not ");
             
@@ -141,7 +139,7 @@ serve_dhcp_discover (dhcp_message *msg, size_t len, dhcp_message *reply)
 	    assoc->lease_time = pool.pending_time;
 	}
             
-        return prepare_dhcp_offer(msg, len, reply, assoc);
+        return fill_dhcp_reply(request, reply, assoc, DHCP_OFFER);
 
     }
 
@@ -150,7 +148,8 @@ serve_dhcp_discover (dhcp_message *msg, size_t len, dhcp_message *reply)
         /* If an address is available, the new address
            SHOULD be chosen as follows: */
 
-	assoc = search_assoc(pool.bindings, msg->chaddr, 6, DYNAMIC, EMPTY);
+	assoc = search_assoc(pool.bindings, request->hdr.chaddr,
+			     request->hdr.hlen, DYNAMIC, EMPTY);
 
         if (assoc) {
 
@@ -161,8 +160,8 @@ serve_dhcp_discover (dhcp_message *msg, size_t len, dhcp_message *reply)
                expired or released) binding, if that address is in the server's
                pool of available addresses and not already allocated, ELSE */
 
-	    log_info("Offer to '%s' of dynamic address '%s', current status '%s', %sexpired",
-		     str_mac(msg->chaddr), str_ip(assoc->address),
+	    log_info("Offer %s to %s, %s status %sexpired",
+		     str_ip(assoc->address), str_mac(request->hdr.chaddr),
 		     str_status(assoc->status),
 		     assoc->assoc_time + assoc->lease_time < time() ? "" : "not ");
 
@@ -172,7 +171,7 @@ serve_dhcp_discover (dhcp_message *msg, size_t len, dhcp_message *reply)
 		assoc->lease_time = pool.pending_time;
 	    }
 	    
-            return prepare_dhcp_offer(msg, len, reply, assoc);
+            return fill_dhcp_reply(request, reply, assoc, DHCP_OFFER);
 
         } else {
 
@@ -185,41 +184,52 @@ serve_dhcp_discover (dhcp_message *msg, size_t len, dhcp_message *reply)
 	       the relay agent that forwarded the message ('giaddr' when not 0). */
 
 	    // TODO: extract requested IP address
-	    address = search_option...
+	    uint32_t address = 0;
+	    dhcp_option *address_opt =
+		search_option(&request->opts, REQUESTED_IP_ADDRESS);
 
-	    assoc = new_dynamic_assoc (pool.bindings, pool.indexes, address, msg->chaddr, 6);
+	    if(address_opt != NULL)
+		memcpy(&address, address_opt->data, sizeof(address));
+	    
+	    assoc = new_dynamic_assoc(pool.bindings, pool.indexes, address,
+				      request->hdr.chaddr, request->hdr.hlen);
 
 	    if (assoc == NULL) {
 		log_info("Can not offer an address to '%s', no address available.",
-			 str_mac(msg->chaddr));
+			 str_mac(request->hdr.chaddr));
 		
-		return NOP;
+		return 0;
 	    }
 
-	    return prepare_dhcp_offer(msg, len, reply, assoc);
+	    return fill_dhcp_reply(request, reply, assoc, DHCP_OFFER);
 	}
 
     }
-    
+
+    // should NOT reach here...
 }
 
 dhcp_msg_type
-serve_dhcp_request (dhcp_message *msg, size_t len, dhcp_option *opts)
+serve_dhcp_request (dhcp_message *msg, STAILQ_HEAD *msg_opts, dhcp_message *reply, STAILQ_HEAD *reply_opts)
 {
-    // TODO: get SERVER_IDENTIFIER from options or error...
+    uint32_t server_id = 0;
+    dhcp_option *server_id_opt = search_option(msg_opts, SERVER_IDENTIFIER);
 
-    address_assoc *assoc = search_assoc(pool.bindings, msg->chaddr, 6, DONT_CARE, PENDING);
+    if(server_id_opt != NULL)
+	memcpy(&server_id, server_id_opt->data, sizeof(server_id));
+
+    address_assoc *assoc = search_assoc(pool.bindings, msg->chaddr, msg->hlen, STATIC_OR_DYNAMIC, PENDING);
     
     if (server_id == pool.server_id) { // this request is an answer to our offer
 
 	if (assoc != NULL) {
 
 	    assoc->status = ASSOCIATED;
-	    return prepare_dhcp_ack(msg, opts);
+	    return fill_dhcp_reply(msg, msg_opts, assoc, reply, reply_opts, DHCP_ACK);
 	    
 	} else {
 
-	    return prepare_dhcp_nak(msg, opts);
+	    return fill_dhcp_reply(msg, NULL, NULL, reply, reply_opts, DHCP_NAK);
 
 	}
 
@@ -232,49 +242,46 @@ serve_dhcp_request (dhcp_message *msg, size_t len, dhcp_option *opts)
 
     }
 
-    else {
+    // malformed request...
+    return NOP;
+}
 
-	// TODO: other cases
-	return NOP;
+dhcp_msg_type
+serve_dhcp_decline (dhcp_message *msg, STAILQ_HEAD *msg_opts, dhcp_message *reply, STAILQ_HEAD *reply_opts)
+{
+    address_assoc *assoc = search_assoc(pool.bindings, msg->chaddr, msg->hlen, STATIC_OR_DYNAMIC, PENDING);
 
+    if(assoc != NULL) {
+	log_info("Released address by '%s' of address '%s', %sin database.",
+		 str_mac(msg->chaddr), str_ip(assoc->address),
+		 assoc == NULL ? "not " , "");
+
+	assoc->status = EMPTY;
     }
 
+    return NOP;
 }
 
 dhcp_msg_type
-serve_dhcp_decline (dhcp_message *msg, size_t len, dhcp_option *opts)
+serve_dhcp_release (dhcp_message *msg, STAILQ_HEAD *msg_opts, dhcp_message *reply, STAILQ_HEAD *reply_opts)
 {
-    address_assoc *assoc = search_assoc(pool.bindings, msg->chaddr, 6, 0, PENDING);
-    
-    log_info("Released address by '%s' of address '%s', %sin database.",
-	     str_mac(msg->chaddr), str_ip(assoc->address),
-	     assoc == NULL ? "not " , "");
+    address_assoc *assoc = search_assoc(pool.bindings, msg->chaddr, msg->hlen, STATIC_OR_DYNAMIC, ASSOCIATED);
 
-    assoc->status = EMPTY;
+    if(assoc != NULL) {
+	log_info("Released address by '%s' of address '%s', %sassociated.",
+		 str_mac(msg->chaddr), str_ip(assoc->address),
+		 assoc == NULL ? "not " , "");
+
+	assoc->status = RELEASED;
+    }
 
     return NOP;
 }
 
 dhcp_msg_type
-serve_dhcp_release (dhcp_message *msg, size_t len, dhcp_option *opts)
+serve_dhcp_inform (dhcp_message *msg, STAILQ_HEAD *msg_opts, dhcp_message *reply, STAILQ_HEAD *reply_opts)
 {
-    address_assoc *assoc = search_assoc(pool.bindings, msg->chaddr, 6, 0, ASSOCIATED);
-    
-    log_info("Released address by '%s' of address '%s', %sassociated.",
-	     str_mac(msg->chaddr), str_ip(assoc->address),
-	     assoc == NULL ? "not " , "");
-
-    assoc->status = RELEASED;
-
-    return NOP;
-}
-
-dhcp_msg_type
-serve_dhcp_inform (dhcp_message *msg, size_t len, dhcp_option *opts)
-{
-    // TODO
-
-    return NOP;
+    return fill_dhcp_reply(msg, msg_opts, NULL, reply, reply_opts, DHCP_ACK);
 }
 
 /*
@@ -290,73 +297,42 @@ message_dispatcher (int s, struct sockaddr_in server_sock)
 	socklen_t slen = sizeof(client_sock);
 	size_t len;
 
-	dhcp_message msg;
-	dhcp_message reply;
+	dhcp_msg request;
+	dhcp_msg reply;
 
-	STAILQ_HEAD(dhcp_option_entry_list, dhcp_option_entry) msg_opts;   // see queue(3)
-	STAILQ_HEAD(dhcp_option_entry_list, dhcp_option_entry) reply_opts; // see queue(3)
-
-	STAILQ_INIT(&msg_opts);   // see queue(3)
-	STAILQ_INIT(&reply_opts); // see queue(3)
-
-	dhcp_msg_type ret;
-
-	uint8_t *opts;
 	uint8_t type;
 
-	if ((len = dhcp_recv_message(s, &msg, &client_sock, &slen)) < 0) {
-	    continue;
+	if((len = dhcp_recv_message(s, &request.hdr, &client_sock, &slen)) < 300) {
+	    continue; // TODO: check the magic number 300
 	}
 
-	if (len < 300) { // TODO
-	    log_error("%s.%u: request with invalid size received\n",
+	if(request.hdr.op != BOOTREQUEST)
+	    continue;
+	
+	if((type = expand_request(&request, len)) == 0) {
+	    log_error("%s.%u: invalid request received\n",
 		      inet_ntoa(client_sock.sin_addr), ntohs(client_sock.sin_port));
 	    continue;
 	}
+	
+	init_reply(&request, &reply);
 
-	if (msg.op != BOOTREQUEST)
-	    continue;
-
-	if(parse_options_to_list(&msg, len, &msg_opts) == 0) { // TODO: write this function
-	    log_error("%s.%u: request with invalid options\n",
-		      inet_ntoa(client_sock.sin_addr), ntohs(client_sock.sin_port));
-	    continue;
-	}
-
-	if (memcmp(msg.options, option_magic, sizeof(option_magic)) != 0) { // TODO
-	    log_error("%s.%u: request with invalid option magic\n",
-		      inet_ntoa(client_sock.sin_addr), ntohs(client_sock.sin_port));
-	    continue;
-	}
-
-	opts = msg.options + sizeof(option_magic);
-	opt = search_option(DHCP_MESSAGE_TYPE,
-			    len - DHCP_HEADER_SIZE - sizeof(option_magic), opts);
-
-	if (opt == NULL) {
-	    printf("%s.%u: request without DHCP message type option\n",
-		   inet_ntoa(client_sock.sin_addr), ntohs(client_sock.sin_port));
-	    continue;
-	}
-
-	init_dhcp_reply(&msg, len, &reply);
-
-	switch (opt->data[0]) {
+	switch (type) {
 
 	case DHCPDISCOVER:
-            ret = serve_dhcp_discover(&msg, len, &reply);
+            type = serve_dhcp_discover(&request, &reply);
 
 	case DHCPREQUEST:
-	    ret = serve_dhcp_request(&msg, len, &reply);
+	    type = serve_dhcp_request(&request, &reply);
 
 	case DHCPDECLINE:
-	    ret = serve_dhcp_decline(&msg, len, &reply);
+	    type = serve_dhcp_decline(&request, &reply);
 
 	case DHCPRELEASE:
-	    ret = serve_dhcp_release(&msg, len, &reply);
+	    type = serve_dhcp_release(&request, &reply);
 
 	case DHCPINFORM:
-	    ret = serve_dhcp_inform(&msg, len, &reply);
+	    type = serve_dhcp_inform(&request, &reply);
 
 	default:
 	    printf("%s.%u: request with invalid DHCP message type option\n",
@@ -365,7 +341,7 @@ message_dispatcher (int s, struct sockaddr_in server_sock)
 	
 	}
 
-	if(ret != NOP)
+	if(type != 0)
 	    send_dhcp_reply(s, server_sock, client_sock, &reply);
 
     }

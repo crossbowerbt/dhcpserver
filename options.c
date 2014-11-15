@@ -371,8 +371,14 @@ parse_options_to_list (STAILQ_HEAD *head, dhcp_option *opts, size_t len)
     opt = opts;
     end = ((uint8_t *)opts) + len;
 
+    if (len < 4 ||
+	memcmp(opt, option_magic, sizeof(option_magic)) != 0)
+	return 0;
+
+    opt = ((uint8_t *) opt) + 4;
+
     while (opt < end  &&
-	   opt->id != END) {
+	   opt->id != END) { // TODO: check also valid option sizes
 
 	if (((uint8_t *) opt) + 2 + opt->len >= end) // the len field is too long
 	    return 0;
