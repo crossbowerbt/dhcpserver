@@ -13,6 +13,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 
+#include <sys/ioctl.h>
 #include <net/if_arp.h>
 #include <net/if.h>
 
@@ -28,6 +29,49 @@
  */
 
 address_pool pool;
+
+/*
+ * Helper functions
+ */
+
+char *
+str_ip (uint32_t ip)
+{
+    struct in_addr addr;
+    memcpy(&addr, &ip, sizeof(ip));
+    return inet_ntoa(addr);
+}
+
+char *
+str_mac (uint8_t *mac)
+{
+    static char str[128];
+
+    sprintf(str, "%x:%x:%x:%x:%x:%x",
+	    mac[0], mac[1], mac[2],
+	    mac[3], mac[4], mac[5]);
+
+    return str;
+}
+
+char *
+str_status (int status)
+{
+    switch(status) {
+    case EMPTY:
+	return "empty";
+    case PENDING:
+	return "pending";
+    case ASSOCIATED:
+	return "associated";
+    case RELEASED:
+	return "released";
+    case EXPIRED:
+	return "expired";
+    default:
+	return NULL;
+    }
+}
 
 /*
  * Network related routines
@@ -86,13 +130,13 @@ send_dhcp_reply	(int s, struct sockaddr_in *client_sock, dhcp_msg *reply)
 
     len += DHCP_HEADER_SIZE;
     
-    sock->sin_addr.s_addr = reply->hdr.yiaddr; // use the address assigned by us
+    client_sock->sin_addr.s_addr = reply->hdr.yiaddr; // use the address assigned by us
 
     if(reply->hdr.yiaddr != 0) {
 	add_arp_entry(s, reply->hdr.chaddr, reply->hdr.yiaddr);
     }
 
-    if ((ret = sendto(s, reply, len, 0, client_sock, sizeof(*client_sock))) < 0) {
+    if ((ret = sendto(s, reply, len, 0, (struct sockaddr *)client_sock, sizeof(*client_sock))) < 0) {
 	perror("sendto failed");
 	return -1;
     }
@@ -105,9 +149,9 @@ send_dhcp_reply	(int s, struct sockaddr_in *client_sock, dhcp_msg *reply)
  */
 
 uint8_t
-expand_msg (dhcp_msg *request, size_t len)
+expand_request (dhcp_msg *request, size_t len)
 {
-    STAILQ_INIT(&request.opts);
+    STAILQ_INIT(&request->opts);
     
     if (request->hdr.hlen < 1 || request->hdr.hlen > 16)
 	return 0;
@@ -149,7 +193,7 @@ init_reply (dhcp_msg *request, dhcp_msg *reply)
 }
 
 void
-fill_requested_dhcp_options (dhcp_option *requested_opts, STAILQ_HEAD *reply_opts)
+fill_requested_dhcp_options (dhcp_option *requested_opts, dhcp_option_list *reply_opts)
 {
     uint8_t len = requested_opts->len;
     uint8_t *id = requested_opts->data;
@@ -158,7 +202,7 @@ fill_requested_dhcp_options (dhcp_option *requested_opts, STAILQ_HEAD *reply_opt
     for (i = 0; i < len; i++) {
 	    
 	if(id[i] != 0) {
-	    dhcp_option *opt = search_option(pool.options, id);
+	    dhcp_option *opt = search_option(&pool.options, id[i]);
 	    if(opt != NULL)
 		append_option(reply_opts, opt);
 	}
@@ -166,7 +210,7 @@ fill_requested_dhcp_options (dhcp_option *requested_opts, STAILQ_HEAD *reply_opt
     }
 }
 
-dhcp_msg_type
+int
 fill_dhcp_reply (dhcp_msg *request, dhcp_msg *reply,
 		 address_binding *assoc, uint8_t type)
 {
@@ -177,7 +221,7 @@ fill_dhcp_reply (dhcp_msg *request, dhcp_msg *reply,
     type_opt.data[0] = type;
     append_option(&reply->opts, &type_opt);
 
-    server_id_opt.id = SERVER_ID;
+    server_id_opt.id = SERVER_IDENTIFIER;
     server_id_opt.len = 4;
     memcpy(server_id_opt.data, &pool.server_id, sizeof(pool.server_id));
     append_option(&reply->opts, &server_id_opt);
@@ -193,35 +237,35 @@ fill_dhcp_reply (dhcp_msg *request, dhcp_msg *reply,
     }
     
     if (type != DHCP_NAK) {
-	dhcp_option *requested_opts = search_option(msg_opts, PARAMETER_REQUEST_LIST);
+	dhcp_option *requested_opts = search_option(&request->opts, PARAMETER_REQUEST_LIST);
 
 	if (requested_opts)
-	    fill_requested_dhcp_options (requested_opts, reply_opts);
+	    fill_requested_dhcp_options(requested_opts, &reply->opts);
     }
     
     return type;
 }
 
-dhcp_msg_type
+int
 serve_dhcp_discover (dhcp_msg *request, dhcp_msg *reply)
 {  
-    address_assoc *assoc = search_assoc(pool.bindings, request->hdr.chaddr,
-					request->hdr.hlen, STATIC, EMPTY);
+    address_binding *binding = search_binding(&pool.bindings, request->hdr.chaddr,
+					      request->hdr.hlen, STATIC, EMPTY);
 
-    if (assoc) { // a static association has been configured for this client
+    if (binding) { // a static binding has been configured for this client
 
         log_info("Offer %s to %s (static), %s status %sexpired",
-                 str_ip(assoc->address), str_mac(request->hdr.chaddr),
-                 str_status(assoc->status),
-                 assoc->assoc_time + assoc->lease_time < time() ? "" : "not ");
+                 str_ip(binding->address), str_mac(request->hdr.chaddr),
+                 str_status(binding->status),
+                 binding->binding_time + binding->lease_time < time(NULL) ? "" : "not ");
             
-        if (assoc->assoc_time + assoc->lease_time < time()) {
-	    assoc->status = PENDING;
-	    assoc->assoc_time = time();
-	    assoc->lease_time = pool.pending_time;
+        if (binding->binding_time + binding->lease_time < time(NULL)) {
+	    binding->status = PENDING;
+	    binding->binding_time = time(NULL);
+	    binding->lease_time = pool.pending_time;
 	}
             
-        return fill_dhcp_reply(request, reply, assoc, DHCP_OFFER);
+        return fill_dhcp_reply(request, reply, binding, DHCP_OFFER);
 
     }
 
@@ -230,10 +274,10 @@ serve_dhcp_discover (dhcp_msg *request, dhcp_msg *reply)
         /* If an address is available, the new address
            SHOULD be chosen as follows: */
 
-	assoc = search_assoc(pool.bindings, request->hdr.chaddr,
-			     request->hdr.hlen, DYNAMIC, EMPTY);
+	binding = search_binding(&pool.bindings, request->hdr.chaddr,
+				 request->hdr.hlen, DYNAMIC, EMPTY);
 
-        if (assoc) {
+        if (binding) {
 
             /* The client's current address as recorded in the client's current
                binding, ELSE */
@@ -243,17 +287,17 @@ serve_dhcp_discover (dhcp_msg *request, dhcp_msg *reply)
                pool of available addresses and not already allocated, ELSE */
 
 	    log_info("Offer %s to %s, %s status %sexpired",
-		     str_ip(assoc->address), str_mac(request->hdr.chaddr),
-		     str_status(assoc->status),
-		     assoc->assoc_time + assoc->lease_time < time() ? "" : "not ");
+		     str_ip(binding->address), str_mac(request->hdr.chaddr),
+		     str_status(binding->status),
+		     binding->binding_time + binding->lease_time < time(NULL) ? "" : "not ");
 
-	    if (assoc->assoc_time + assoc->lease_time < time()) {
-		assoc->status = PENDING;
-		assoc->assoc_time = time();
-		assoc->lease_time = pool.pending_time;
+	    if (binding->binding_time + binding->lease_time < time(NULL)) {
+		binding->status = PENDING;
+		binding->binding_time = time(NULL);
+		binding->lease_time = pool.pending_time;
 	    }
 	    
-            return fill_dhcp_reply(request, reply, assoc, DHCP_OFFER);
+            return fill_dhcp_reply(request, reply, binding, DHCP_OFFER);
 
         } else {
 
@@ -273,17 +317,17 @@ serve_dhcp_discover (dhcp_msg *request, dhcp_msg *reply)
 	    if(address_opt != NULL)
 		memcpy(&address, address_opt->data, sizeof(address));
 	    
-	    assoc = new_dynamic_assoc(pool.bindings, pool.indexes, address,
-				      request->hdr.chaddr, request->hdr.hlen);
+	    binding = new_dynamic_binding(&pool.bindings, &pool.indexes, address,
+					  request->hdr.chaddr, request->hdr.hlen);
 
-	    if (assoc == NULL) {
+	    if (binding == NULL) {
 		log_info("Can not offer an address to '%s', no address available.",
 			 str_mac(request->hdr.chaddr));
 		
 		return 0;
 	    }
 
-	    return fill_dhcp_reply(request, reply, assoc, DHCP_OFFER);
+	    return fill_dhcp_reply(request, reply, binding, DHCP_OFFER);
 	}
 
     }
@@ -291,11 +335,11 @@ serve_dhcp_discover (dhcp_msg *request, dhcp_msg *reply)
     // should NOT reach here...
 }
 
-dhcp_msg_type
+int
 serve_dhcp_request (dhcp_msg *request, dhcp_msg *reply)
 {
-    address_assoc *assoc = search_assoc(pool.bindings, request->hdr.chaddr,
-					request->hdr.hlen, STATIC_OR_DYNAMIC, PENDING);
+    address_binding *binding = search_binding(&pool.bindings, request->hdr.chaddr,
+					      request->hdr.hlen, STATIC_OR_DYNAMIC, PENDING);
 
     uint32_t server_id = 0;
     dhcp_option *server_id_opt = search_option(&request->opts, SERVER_IDENTIFIER);
@@ -305,13 +349,13 @@ serve_dhcp_request (dhcp_msg *request, dhcp_msg *reply)
     
     if (server_id == pool.server_id) { // this request is an answer to our offer
 
-	if (assoc != NULL) {
+	if (binding != NULL) {
 
 	    log_info("Ack %s to %s, associated",
-		     str_ip(assoc->address), str_mac(request->hdr.chaddr));
+		     str_ip(binding->address), str_mac(request->hdr.chaddr));
 
-	    assoc->status = ASSOCIATED;
-	    return fill_dhcp_reply(request, reply, assoc, DHCP_ACK);
+	    binding->status = ASSOCIATED;
+	    return fill_dhcp_reply(request, reply, binding, DHCP_ACK);
 	
 	} else {
 
@@ -324,9 +368,9 @@ serve_dhcp_request (dhcp_msg *request, dhcp_msg *reply)
     } else if (server_id != 0) { // answer to the offer of another server
 
 	log_info("Clearing %s of %s, accepted another server offer",
-		 str_ip(assoc->address), str_mac(request->hdr.chaddr));
+		 str_ip(binding->address), str_mac(request->hdr.chaddr));
 		    
-	assoc->status = EMPTY;
+	binding->status = EMPTY;
 	return 0;
 
     }
@@ -335,39 +379,39 @@ serve_dhcp_request (dhcp_msg *request, dhcp_msg *reply)
     return 0;
 }
 
-dhcp_msg_type
+int
 serve_dhcp_decline (dhcp_msg *request, dhcp_msg *reply)
 {
-    address_assoc *assoc = search_assoc(pool.bindings, request->hdr.chaddr,
-					request->hdr.hlen, STATIC_OR_DYNAMIC, PENDING);
+    address_binding *binding = search_binding(&pool.bindings, request->hdr.chaddr,
+					      request->hdr.hlen, STATIC_OR_DYNAMIC, PENDING);
 
-    if(assoc != NULL) {
+    if(binding != NULL) {
 	log_info("Declined %s by %s",
-		 str_ip(assoc->address), str_mac(request->hdr.chaddr));
+		 str_ip(binding->address), str_mac(request->hdr.chaddr));
 
-	assoc->status = EMPTY;
+	binding->status = EMPTY;
     }
 
     return 0;
 }
 
-dhcp_msg_type
+int
 serve_dhcp_release (dhcp_msg *request, dhcp_msg *reply)
 {
-    address_assoc *assoc = search_assoc(pool.bindings, request->hdr.chaddr,
-					request->hdr.hlen, STATIC_OR_DYNAMIC, ASSOCIATED);
+    address_binding *binding = search_binding(&pool.bindings, request->hdr.chaddr,
+					      request->hdr.hlen, STATIC_OR_DYNAMIC, ASSOCIATED);
 
-    if(assoc != NULL) {
+    if(binding != NULL) {
 	log_info("Released %s by %s",
-		 str_mac(request->hdr.chaddr), str_ip(assoc->address));
+		 str_mac(request->hdr.chaddr), str_ip(binding->address));
 
-	assoc->status = RELEASED;
+	binding->status = RELEASED;
     }
 
     return 0;
 }
 
-dhcp_msg_type
+int
 serve_dhcp_inform (dhcp_msg *request, dhcp_msg *reply)
 {
     log_info("Info to %s", str_mac(request->hdr.chaddr));
@@ -393,7 +437,7 @@ message_dispatcher (int s, struct sockaddr_in server_sock)
 
 	uint8_t type;
 
-	if((len = recvfrom(s, &request.hdr, &client_sock, &slen)) < 300) {
+	if((len = recvfrom(s, &request.hdr, sizeof(request.hdr), 0, (struct sockaddr *)&client_sock, &slen)) < 300) {
 	    continue; // TODO: check the magic number 300
 	}
 
@@ -410,19 +454,19 @@ message_dispatcher (int s, struct sockaddr_in server_sock)
 
 	switch (type) {
 
-	case DHCPDISCOVER:
+	case DHCP_DISCOVER:
             type = serve_dhcp_discover(&request, &reply);
 
-	case DHCPREQUEST:
+	case DHCP_REQUEST:
 	    type = serve_dhcp_request(&request, &reply);
 
-	case DHCPDECLINE:
+	case DHCP_DECLINE:
 	    type = serve_dhcp_decline(&request, &reply);
 
-	case DHCPRELEASE:
+	case DHCP_RELEASE:
 	    type = serve_dhcp_release(&request, &reply);
 
-	case DHCPINFORM:
+	case DHCP_INFORM:
 	    type = serve_dhcp_inform(&request, &reply);
 
 	default:
@@ -433,7 +477,7 @@ message_dispatcher (int s, struct sockaddr_in server_sock)
 	}
 
 	if(type != 0)
-	    send_dhcp_reply(s, server_sock, client_sock, &reply);
+	    send_dhcp_reply(s, &client_sock, &reply);
 
     }
 
@@ -455,8 +499,7 @@ main (int argc, char *argv[])
 
     /* Load configuration */
 
-    load_global_config();
-    load_static_bindings();
+    parse_args(argc, argv, &pool);
 
     /* Set up server */
 

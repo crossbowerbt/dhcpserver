@@ -69,7 +69,7 @@ typedef struct binding_list binding_list;
 
 void init_binding_list (binding_list *list);
 
-address_binding *add_binding (binding_list *list, uint32_t address, uint8_t *cident, uint8_t cident_len);
+address_binding *add_binding (binding_list *list, uint32_t address, uint8_t *cident, uint8_t cident_len, int is_static);
 void remove_binding (address_binding *binding);
 
 void update_bindings_statuses (binding_list *list);

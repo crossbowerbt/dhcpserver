@@ -14,9 +14,11 @@ enum dhcp_msg_type {
      DHCP_DISCOVER = 1,
      DHCP_OFFER    = 2,
      DHCP_REQUEST  = 3,
-     DHCP_ACK      = 4,
-     DHCP_NAK      = 5,
-     DHCP_INFORM   = 6,
+     DHCP_DECLINE  = 4,
+     DHCP_ACK      = 5,
+     DHCP_NAK      = 6,
+     DHCP_RELEASE  = 7,
+     DHCP_INFORM   = 8,
 };
 
 enum {
@@ -121,23 +123,18 @@ enum {
 
 };
 
-const uint8_t option_magic[4] = { 0x63, 0x82, 0x53, 0x63 };
-
 struct dhcp_option {
     uint8_t id;        // option id
     uint8_t len;       // option length
     uint8_t data[256]; // option data
+
+    STAILQ_ENTRY(dhcp_option) pointers; // pointers, see queue(3)
 };
 
 typedef struct dhcp_option dhcp_option;
 
-struct dhcp_option_entry {
-    dhcp_option *option;
-
-    STAILQ_ENTRY(dhcp_option_entry) pointers; // pointers, see queue(3)
-};
-
-typedef struct dhcp_option_entry dhcp_option_entry;
+typedef STAILQ_HEAD(dhcp_option_list, dhcp_option) DHCP_OPTION_LIST;
+typedef struct dhcp_option_list dhcp_option_list;
 
 /* Value parsing functions:
  *
@@ -160,8 +157,7 @@ int parse_mac (char *s, void **p);
 
 /* Other prototypes */
 
-dhcp_option * parse_option (dhcp_option *_opt, char *_name, char *_value);
-uint8_t * copy_option (uint8_t *_dst, dhcp_option *_opt);
-uint8_t * search_option (uint8_t *_buf, size_t _buf_len, uint8_t _id);
+uint8_t parse_option (dhcp_option *option, char *name, char *value);
+dhcp_option * search_option (dhcp_option_list *list, uint8_t id);
 
 #endif

@@ -5,6 +5,7 @@
 #include <time.h>
 #include <sys/queue.h>
 
+#include "dhcp.h"
 #include "options.h"
 #include "bindings.h"
 
@@ -29,12 +30,12 @@ struct address_pool {
     time_t max_lease_time;  // max acceptable lease time
     time_t pending_time;    // duration of a binding in the pending state
 
-    STAILQ_HEAD(dhcp_option_list, dhcp_option) options; // options for this pool, see queue
-
-    LIST_HEAD(address_binding_list, address_binding) bindings; // associated addresses, see queue(3)
+    dhcp_option_list options; // options for this pool, see queue
+    
+    binding_list bindings; // associated addresses, see queue(3)
 };
 
-typedef struct address_pool pool;
+typedef struct address_pool address_pool;
 
 /*
  * Internal representation of a DHCP message,
@@ -42,8 +43,8 @@ typedef struct address_pool pool;
  */
 
 struct dhcp_msg {
-    dhcp_message *hdr;
-    STAILQ_HEAD(dhcp_option_entry_list, dhcp_option_entry) opts;
+    dhcp_message hdr;
+    dhcp_option_list opts;
 };
 
 typedef struct dhcp_msg dhcp_msg;

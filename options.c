@@ -16,6 +16,8 @@
 
 #include "options.h"
 
+const uint8_t option_magic[4] = { 0x63, 0x82, 0x53, 0x63 };
+
 /* 
  * Mapping table between DHCP options and 
  * functions that parse their value.
@@ -24,7 +26,7 @@
 static struct {
 
     char *name;
-    (int (*f)) (char *, void **);
+    int (*f) (char *, void **);
 
 } dhcp_option_info [256] = {
 
@@ -113,8 +115,9 @@ int
 parse_byte (char *s, void **p)
 {
     *p = malloc(sizeof(uint8_t));
-    **p = ((uint8_t) strtol(s, NULL, 0));
-
+    uint8_t n = ((uint8_t) strtol(s, NULL, 0));
+    memcpy(*p, &n, sizeof(n));
+    
     return sizeof(uint8_t);
 }
 
@@ -132,7 +135,7 @@ parse_byte_list (char *s, void **p)
 
 	uint8_t n = ((uint8_t) strtol(s3, NULL, 0));
 
-	memcpy(((uint8_t *) *p) + count, n, sizeof(uint8_t));
+	memcpy(((uint8_t *) *p) + count, &n, sizeof(uint8_t));
 
 	count += sizeof(uint8_t);
 	s3 = strtok(NULL, " ");
@@ -147,8 +150,9 @@ int
 parse_short (char *s, void **p)
 {
     *p = malloc(sizeof(uint16_t));
-    **p = ((uint16_t) strtol(s, NULL, 0));
-
+    uint16_t n = ((uint16_t) strtol(s, NULL, 0));
+    memcpy(*p, &n, sizeof(n));
+    
     return sizeof(uint16_t);
 }
 
@@ -166,7 +170,7 @@ parse_short_list (char *s, void **p)
 
 	uint16_t n = ((uint16_t) strtol(s3, NULL, 0));
 
-	memcpy(((uint8_t *) *p) + count, n, sizeof(uint16_t));
+	memcpy(((uint8_t *) *p) + count, &n, sizeof(uint16_t));
 
 	count += sizeof(uint16_t);
 	s3 = strtok(NULL, " ");
@@ -181,7 +185,8 @@ int
 parse_long (char *s, void **p)
 {
     *p = malloc(sizeof(uint32_t));
-    **p = strtol(s, NULL, 0);
+    uint32_t n = strtol(s, NULL, 0);
+    memcpy(*p, &n, sizeof(n));
 
     return sizeof(uint32_t);
 }
@@ -206,7 +211,7 @@ parse_ip (char *s, void **p)
 	return 0;
     }
 
-    memcpy(*p, ip.sin_addr, sizeof(uint32_t));
+    memcpy(*p, &ip.sin_addr, sizeof(uint32_t));
 
     return sizeof(uint32_t);
 }
@@ -229,7 +234,7 @@ parse_ip_list (char *s, void **p)
 	    return 0;
 	}
 
-	memcpy(((* uint8_t) *p) + count, ip.sin_addr, sizeof(uint32_t));
+	memcpy(((uint8_t *) *p) + count, &ip.sin_addr, sizeof(uint32_t));
 
 	count += sizeof(uint32_t);
 	s3 = strtok(NULL, " ");
@@ -279,30 +284,30 @@ parse_mac (char *s, void **p)
 uint8_t
 parse_option (dhcp_option *opt, char *name, char *value)
 {
-    (int (*f)) (char *, void **);
-    int code;
+    int (*f) (char *, void **);
+    int id;
 
     uint8_t len;
     uint8_t *p;
 
-    for (code = 0; code < 256; code++) { // search the option by name
-        if (dhcp_option_names[code].name &&
-                strcmp(dhcp_option_names[code].name, name) == 0) break;
+    for (id = 0; id < 256; id++) { // search the option by name
+        if (dhcp_option_info[id].name &&
+                strcmp(dhcp_option_info[id].name, name) == 0) break;
     }
 
-    if (code == 256) { // not found
+    if (id == 256) { // not found
         error("Unsupported DHCP option '%s'", name);
-        return NULL;
+        return 0;
     }
 
-    f = dhcp_option_info[code].f;
+    f = dhcp_option_info[id].f;
 
     if (f == NULL) { // no parsing function available
         error("Unsupported DHCP option '%s'", name);
-        return NULL;
+        return 0;
     }
 
-    len = f(value, &p); // parse the value
+    len = f(value, (void **)&p); // parse the value
 
     // structure filling
     opt->id = id;
@@ -315,19 +320,6 @@ parse_option (dhcp_option *opt, char *name, char *value)
 }
 
 /*
- * Copy the option pointed by opt into the buffer pointed by dst.
- * Only the bytes needed to represent the option are copied.
- *
- * Returns a pointer to the byte just after the copied option.
- */
-uint8_t *
-copy_option (uint8_t *dst, dhcp_option *opt)
-{
-    memcpy(dst, opt, 2 + opt->len);
-    return ((uint8_t *) dst) + 2 + opt->len;
-}
-
-/*
  * Given a list of options search an option having
  * the passed option id, and returns a pointer to it.
  *
@@ -335,9 +327,11 @@ copy_option (uint8_t *dst, dhcp_option *opt)
  */
 
 dhcp_option *
-search_option (STAILQ_HEAD *head, uint8_t id)
+search_option (dhcp_option_list *list, uint8_t id)
 {
-    STAILQ_FOREACH_SAFE(opt, head, pointers, opt_temp) {
+    dhcp_option *opt, *opt_temp;
+    
+    STAILQ_FOREACH_SAFE(opt, list, pointers, opt_temp) {
 
 	if(opt->id == id)
 	    return opt;
@@ -352,9 +346,9 @@ search_option (STAILQ_HEAD *head, uint8_t id)
  */
 
 void
-append_option (STAILQ_HEAD *head, dhcp_option *opt)
+append_option (dhcp_option_list *list, dhcp_option *opt)
 {
-    STAILQ_INSERT_TAIL(head, opt, pointers);
+    STAILQ_INSERT_TAIL(list, opt, pointers);
 }
 
 /*
@@ -364,28 +358,28 @@ append_option (STAILQ_HEAD *head, dhcp_option *opt)
  */
 
 int
-parse_options_to_list (STAILQ_HEAD *head, dhcp_option *opts, size_t len)
+parse_options_to_list (dhcp_option_list *list, dhcp_option *opts, size_t len)
 {
     dhcp_option *opt, *end;
 
     opt = opts;
-    end = ((uint8_t *)opts) + len;
+    end = (dhcp_option *)(((uint8_t *)opts) + len);
 
     if (len < 4 ||
 	memcmp(opt, option_magic, sizeof(option_magic)) != 0)
 	return 0;
 
-    opt = ((uint8_t *) opt) + 4;
+    opt = (dhcp_option *)(((uint8_t *) opt) + 4);
 
     while (opt < end  &&
 	   opt->id != END) { // TODO: check also valid option sizes
 
-	if (((uint8_t *) opt) + 2 + opt->len >= end) // the len field is too long
+	if ((dhcp_option *)(((uint8_t *) opt) + 2 + opt->len) >= end) // the len field is too long
 	    return 0;
 
-	STAILQ_INSERT_TAIL(head, opt, pointers);
+	STAILQ_INSERT_TAIL(list, opt, pointers);
 
-        opt = ((uint8_t *) opt) + 2 + opt->len;
+        opt = (dhcp_option *)(((uint8_t *) opt) + 2 + opt->len);
     }
 
     if (opt < end && opt->id == END)
@@ -402,7 +396,7 @@ parse_options_to_list (STAILQ_HEAD *head, dhcp_option *opts, size_t len)
  */
 
 size_t
-serialize_option_list (STAILQ_HEAD *head, uint8_t *buf, size_t len)
+serialize_option_list (dhcp_option_list *list, uint8_t *buf, size_t len)
 {
     uint8_t *p = buf;
 
@@ -411,8 +405,10 @@ serialize_option_list (STAILQ_HEAD *head, uint8_t *buf, size_t len)
 
     memcpy(p, option_magic, sizeof(option_magic));
     p += 4; len -= 4;
+
+    dhcp_option *opt, *opt_temp;
     
-    STAILQ_FOREACH_SAFE(opt, head, pointers, opt_temp) {
+    STAILQ_FOREACH_SAFE(opt, list, pointers, opt_temp) {
 
 	if (len <= 2 + opt->len)
 	    return 0;
@@ -434,7 +430,7 @@ serialize_option_list (STAILQ_HEAD *head, uint8_t *buf, size_t len)
 }
 
 void
-delete_option_list (STAILQ_HEAD *head)
+delete_option_list (dhcp_option_list *list)
 {
     // TODO: maybe not necessary...
 }

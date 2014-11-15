@@ -26,7 +26,7 @@ init_binding_list (binding_list *list)
 
 address_binding *
 add_binding (binding_list *list, uint32_t address,
-	     uint8_t *cident, uint8_t cident_len)
+	     uint8_t *cident, uint8_t cident_len, int is_static)
 {
     // fill binding
 
@@ -35,6 +35,8 @@ add_binding (binding_list *list, uint32_t address,
     binding->address = address;
     binding->cident_len = cident_len;
     memcpy(binding->cident, cident, cident_len);
+
+    binding->is_static = is_static;
 
     // add to binding list
 
@@ -157,7 +159,7 @@ new_dynamic_binding (binding_list *list, pool_indexes *indexes, uint32_t address
 	uint32_t address = take_free_address(indexes);
 
 	if(address != 0)
-	    return add_binding(list, address, cident, cident_len);
+	    return add_binding(list, address, cident, cident_len, 0);
 
 	else { // search any previously assigned address which is expired
     
