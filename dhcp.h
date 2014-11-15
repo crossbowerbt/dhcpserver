@@ -3,6 +3,11 @@
 
 #include <stdint.h>
 
+enum ports {
+    BOOTPS = 67,
+    BOOTPC = 68
+};
+
 enum op_types {
     BOOTREQUEST = 1,
     BOOTREPLY   = 2,   

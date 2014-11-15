@@ -30,9 +30,78 @@
 address_pool pool;
 
 /*
- * Expand a dhcp message into the internal representation.
- *
- * Return the message type on success, 0 on failure.
+ * Network related routines
+ */
+
+void
+add_arp_entry (int s, uint8_t *mac, uint32_t ip)
+{
+    struct arpreq ar;
+    struct sockaddr_in *sock;
+
+    sock = (struct sockaddr_in *) &ar.arp_pa;
+    sock->sin_family = AF_INET;
+    sock->sin_addr.s_addr = ip;
+
+    /* add a proxy ARP entry for given pair */
+    memcpy(ar.arp_ha.sa_data, mac, 6);
+    ar.arp_flags = (ATF_PUBL | ATF_COM);
+    
+    if (ioctl(s, SIOCSARP, (char *) &ar) < 0)  {
+	perror("error adding entry to arp table");
+    };    
+}
+
+void
+delete_arp_entry (int s, uint8_t *mac, uint32_t ip)
+{
+    struct arpreq ar;
+    struct sockaddr_in *sock;
+
+    sock = (struct sockaddr_in *) &ar.arp_pa;
+    sock->sin_family = AF_INET;
+    sock->sin_addr.s_addr = ip;
+
+    if(ioctl(s, SIOCGARP, (char *) &ar) < 0)  {
+	if (errno != ENXIO) {
+	    perror("error getting arp entry");
+	    return;
+	}
+    };
+    
+    if(ip == 0 || memcmp(mac, ar.arp_ha.sa_data, 6) == 0) { 
+	if(ioctl(s, SIOCDARP, (char *) &ar) < 0) {
+	    perror("error removing arp table entry");
+	}
+    }
+}
+
+int
+send_dhcp_reply	(int s, struct sockaddr_in *client_sock, dhcp_msg *reply)
+{
+    size_t len, ret;
+
+    len = serialize_option_list(&reply->opts, reply->hdr.options,
+				sizeof(reply->hdr) - DHCP_HEADER_SIZE);
+
+    len += DHCP_HEADER_SIZE;
+    
+    sock->sin_addr.s_addr = reply->hdr.yiaddr; // use the address assigned by us
+
+    if(reply->hdr.yiaddr != 0) {
+	add_arp_entry(s, reply->hdr.chaddr, reply->hdr.yiaddr);
+    }
+
+    if ((ret = sendto(s, reply, len, 0, client_sock, sizeof(*client_sock))) < 0) {
+	perror("sendto failed");
+	return -1;
+    }
+
+    return ret;
+}
+
+/*
+ * Message handling routines.
  */
 
 uint8_t
@@ -304,53 +373,6 @@ serve_dhcp_inform (dhcp_msg *request, dhcp_msg *reply)
     log_info("Info to %s", str_mac(request->hdr.chaddr));
 	
     return fill_dhcp_reply(request, reply, NULL, DHCP_ACK);
-}
-
-/*
- * Network related routines
- */
-
-void
-add_arp_entry (int s, uint8_t *mac, uint32_t ip)
-{
-    struct arpreq ar;
-    struct sockaddr_in *sock;
-
-    sock = (struct sockaddr_in *) &ar.arp_pa;
-    sock->sin_family = AF_INET;
-    sock->sin_addr.s_addr = ip;
-
-    /* add a proxy ARP entry for given pair */
-    memcpy(ar.arp_ha.sa_data, mac, 6);
-    ar.arp_flags = (ATF_PUBL | ATF_COM);
-    
-    if (ioctl(s, SIOCSARP, (char *) &ar) < 0)  {
-	perror("error adding entry to arp table");
-    };    
-}
-
-void
-delete_arp_entry (int s, uint8_t *mac, uint32_t ip)
-{
-    struct arpreq ar;
-    struct sockaddr_in *sock;
-
-    sock = (struct sockaddr_in *) &ar.arp_pa;
-    sock->sin_family = AF_INET;
-    sock->sin_addr.s_addr = ip;
-
-    if(ioctl(s, SIOCGARP, (char *) &ar) < 0)  {
-	if (errno != ENXIO) {
-	    perror("error getting arp entry");
-	    return;
-	}
-    };
-    
-    if(memcmp(mac, ar.arp_ha.sa_data, 6) == 0) { 
-	if(ioctl(s, SIOCDARP, (char *) &ar) < 0) {
-	    perror("error removing arp table entry");
-	}
-    }
 }
 
 /*

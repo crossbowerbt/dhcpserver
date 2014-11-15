@@ -401,7 +401,7 @@ parse_options_to_list (STAILQ_HEAD *head, dhcp_option *opts, size_t len)
  * Return 0 on error, the total serialized len on success.
  */
 
-int
+size_t
 serialize_option_list (STAILQ_HEAD *head, uint8_t *buf, size_t len)
 {
     uint8_t *p = buf;
@@ -425,6 +425,8 @@ serialize_option_list (STAILQ_HEAD *head, uint8_t *buf, size_t len)
 
     if (len < 1)
 	return 0;
+
+    *p = END;
 
     p++; len--;
 
