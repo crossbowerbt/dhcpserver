@@ -13,6 +13,9 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 
+#include <net/if_arp.h>
+#include <net/if.h>
+
 #include "dhcpserver.h"
 #include "bindings.h"
 #include "args.h"
@@ -301,6 +304,53 @@ serve_dhcp_inform (dhcp_msg *request, dhcp_msg *reply)
     log_info("Info to %s", str_mac(request->hdr.chaddr));
 	
     return fill_dhcp_reply(request, reply, NULL, DHCP_ACK);
+}
+
+/*
+ * Network related routines
+ */
+
+void
+add_arp_entry (int s, uint8_t *mac, uint32_t ip)
+{
+    struct arpreq ar;
+    struct sockaddr_in *sock;
+
+    sock = (struct sockaddr_in *) &ar.arp_pa;
+    sock->sin_family = AF_INET;
+    sock->sin_addr.s_addr = ip;
+
+    /* add a proxy ARP entry for given pair */
+    memcpy(ar.arp_ha.sa_data, mac, 6);
+    ar.arp_flags = (ATF_PUBL | ATF_COM);
+    
+    if (ioctl(s, SIOCSARP, (char *) &ar) < 0)  {
+	perror("error adding entry to arp table");
+    };    
+}
+
+void
+delete_arp_entry (int s, uint8_t *mac, uint32_t ip)
+{
+    struct arpreq ar;
+    struct sockaddr_in *sock;
+
+    sock = (struct sockaddr_in *) &ar.arp_pa;
+    sock->sin_family = AF_INET;
+    sock->sin_addr.s_addr = ip;
+
+    if(ioctl(s, SIOCGARP, (char *) &ar) < 0)  {
+	if (errno != ENXIO) {
+	    perror("error getting arp entry");
+	    return;
+	}
+    };
+    
+    if(memcmp(mac, ar.arp_ha.sa_data, 6) == 0) { 
+	if(ioctl(s, SIOCDARP, (char *) &ar) < 0) {
+	    perror("error removing arp table entry");
+	}
+    }
 }
 
 /*
