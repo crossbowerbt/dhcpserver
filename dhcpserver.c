@@ -210,78 +210,87 @@ serve_dhcp_discover (dhcp_msg *request, dhcp_msg *reply)
 }
 
 dhcp_msg_type
-serve_dhcp_request (dhcp_message *msg, STAILQ_HEAD *msg_opts, dhcp_message *reply, STAILQ_HEAD *reply_opts)
+serve_dhcp_request (dhcp_msg *request, dhcp_msg *reply)
 {
+    address_assoc *assoc = search_assoc(pool.bindings, request->hdr.chaddr,
+					request->hdr.hlen, STATIC_OR_DYNAMIC, PENDING);
+
     uint32_t server_id = 0;
-    dhcp_option *server_id_opt = search_option(msg_opts, SERVER_IDENTIFIER);
+    dhcp_option *server_id_opt = search_option(&request->opts, SERVER_IDENTIFIER);
 
     if(server_id_opt != NULL)
 	memcpy(&server_id, server_id_opt->data, sizeof(server_id));
-
-    address_assoc *assoc = search_assoc(pool.bindings, msg->chaddr, msg->hlen, STATIC_OR_DYNAMIC, PENDING);
     
     if (server_id == pool.server_id) { // this request is an answer to our offer
 
 	if (assoc != NULL) {
 
+	    log_info("Ack %s to %s, associated",
+		     str_ip(assoc->address), str_mac(request->hdr.chaddr));
+
 	    assoc->status = ASSOCIATED;
-	    return fill_dhcp_reply(msg, msg_opts, assoc, reply, reply_opts, DHCP_ACK);
-	    
+	    return fill_dhcp_reply(request, reply, assoc, DHCP_ACK);
+	
 	} else {
 
-	    return fill_dhcp_reply(msg, NULL, NULL, reply, reply_opts, DHCP_NAK);
-
+	    log_info("Nak to %s, not associated",
+		     str_mac(request->hdr.chaddr));
+		    
+	    return fill_dhcp_reply(request, reply, NULL, DHCP_NAK);
 	}
 
-    }
+    } else if (server_id != 0) { // answer to the offer of another server
 
-    else if (server_id) { // this request is an answer to the offer of another server
-
+	log_info("Clearing %s of %s, accepted another server offer",
+		 str_ip(assoc->address), str_mac(request->hdr.chaddr));
+		    
 	assoc->status = EMPTY;
-	return NOP;
+	return 0;
 
     }
 
     // malformed request...
-    return NOP;
+    return 0;
 }
 
 dhcp_msg_type
-serve_dhcp_decline (dhcp_message *msg, STAILQ_HEAD *msg_opts, dhcp_message *reply, STAILQ_HEAD *reply_opts)
+serve_dhcp_decline (dhcp_msg *request, dhcp_msg *reply)
 {
-    address_assoc *assoc = search_assoc(pool.bindings, msg->chaddr, msg->hlen, STATIC_OR_DYNAMIC, PENDING);
+    address_assoc *assoc = search_assoc(pool.bindings, request->hdr.chaddr,
+					request->hdr.hlen, STATIC_OR_DYNAMIC, PENDING);
 
     if(assoc != NULL) {
-	log_info("Released address by '%s' of address '%s', %sin database.",
-		 str_mac(msg->chaddr), str_ip(assoc->address),
-		 assoc == NULL ? "not " , "");
+	log_info("Declined %s by %s",
+		 str_ip(assoc->address), str_mac(request->hdr.chaddr));
 
 	assoc->status = EMPTY;
     }
 
-    return NOP;
+    return 0;
 }
 
 dhcp_msg_type
-serve_dhcp_release (dhcp_message *msg, STAILQ_HEAD *msg_opts, dhcp_message *reply, STAILQ_HEAD *reply_opts)
+serve_dhcp_release (dhcp_msg *request, dhcp_msg *reply)
 {
-    address_assoc *assoc = search_assoc(pool.bindings, msg->chaddr, msg->hlen, STATIC_OR_DYNAMIC, ASSOCIATED);
+    address_assoc *assoc = search_assoc(pool.bindings, request->hdr.chaddr,
+					request->hdr.hlen, STATIC_OR_DYNAMIC, ASSOCIATED);
 
     if(assoc != NULL) {
-	log_info("Released address by '%s' of address '%s', %sassociated.",
-		 str_mac(msg->chaddr), str_ip(assoc->address),
-		 assoc == NULL ? "not " , "");
+	log_info("Released %s by %s",
+		 str_mac(request->hdr.chaddr), str_ip(assoc->address));
 
 	assoc->status = RELEASED;
     }
 
-    return NOP;
+    return 0;
 }
 
 dhcp_msg_type
-serve_dhcp_inform (dhcp_message *msg, STAILQ_HEAD *msg_opts, dhcp_message *reply, STAILQ_HEAD *reply_opts)
+serve_dhcp_inform (dhcp_msg *request, dhcp_msg *reply)
 {
-    return fill_dhcp_reply(msg, msg_opts, NULL, reply, reply_opts, DHCP_ACK);
+    log_info("Info to %s", str_mac(request->hdr.chaddr));
+	
+    return fill_dhcp_reply(request, reply, NULL, DHCP_ACK);
 }
 
 /*
