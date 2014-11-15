@@ -98,15 +98,25 @@ dhcp_msg_type
 fill_dhcp_reply (dhcp_msg *request, dhcp_msg *reply,
 		 address_binding *assoc, uint8_t type)
 {
-    static dhcp_option type_opt, lease_time_opt;
+    static dhcp_option type_opt, server_id_opt, lease_time_opt;
 
-    type_opt = { DHCP_MESSAGE_TYPE, 1, type };
+    type_opt.id = DHCP_MESSAGE_TYPE;
+    type_opt.len = 1;
+    type_opt.data[0] = type;
     append_option(&reply->opts, &type_opt);
 
+    server_id_opt.id = SERVER_ID;
+    server_id_opt.len = 4;
+    memcpy(server_id_opt.data, &pool.server_id, sizeof(pool.server_id));
+    append_option(&reply->opts, &server_id_opt);
+    
     if(assoc != NULL) {
 	reply->hdr.yiaddr = htonl(assoc->address);
 
-	lease_time_opt = { IP_ADDRESS_LEASE_TIME, 4, htonl(assoc->lease_time) };
+	uint32_t lease_time = htonl(assoc->lease_time);
+	lease_time_opt.id = IP_ADDRESS_LEASE_TIME;
+	lease_time_opt.len = 4;
+	memcpy(lease_time_opt.data, &lease_time, sizeof(lease_time));
 	append_option(&reply->opts, &lease_time_opt);
     }
     
