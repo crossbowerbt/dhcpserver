@@ -16,7 +16,7 @@ enum {
     DYNAMIC = 0,
     STATIC  = 1,
     STATIC_OR_DYNAMIC = 2
-}
+};
 
 // binding status
 enum {
@@ -49,29 +49,32 @@ struct address_binding {
     uint8_t cident_len;   // client identifier len
     uint8_t cident[256];  // client identifier
     
-    time_t assoc_time;    // time of association
+    time_t binding_time;  // time of binding
     time_t lease_time;    // duration of lease
 
     int status;           // binding status
     int is_static;        // check if it is a static binding
 
-    LIST_ENTRY(address_bindings) pointers; // list pointers, see queue(3)
+    LIST_ENTRY(address_binding) pointers; // list pointers, see queue(3)
 };
 
 typedef struct address_binding address_binding;
 
+typedef LIST_HEAD(binding_list, address_binding) BINDING_LIST_HEAD;
+typedef struct binding_list binding_list;
+						 
 /*
  * Prototypes
  */
 
-void init_binding_list (LIST_HEAD *head);
+void init_binding_list (binding_list *list);
 
-address_binding *add_binding (LIST_HEAD *head, uint32_t address, uint8_t *cident, uint8_t cident_len);
+address_binding *add_binding (binding_list *list, uint32_t address, uint8_t *cident, uint8_t cident_len);
 void remove_binding (address_binding *binding);
 
-void update_bindings_statuses (LIST_HEAD *head);
+void update_bindings_statuses (binding_list *list);
 
-address_assoc *search_assoc (LIST_HEAD *head, uint8_t *cident, uint8_t cident_len, int is_static);
-address_assoc *new_dynamic_assoc (LIST_HEAD *head, pool_indexes *indexes, uint32_t address, uint8_t *cident, uint8_t cident_len);
+address_binding *search_binding (binding_list *list, uint8_t *cident, uint8_t cident_len, int is_static, int status);
+address_binding *new_dynamic_binding (binding_list *list, pool_indexes *indexes, uint32_t address, uint8_t *cident, uint8_t cident_len);
 
 #endif

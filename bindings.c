@@ -12,9 +12,9 @@
  */
 
 void
-init_binding_list (LIST_HEAD *head)
+init_binding_list (binding_list *list)
 {
-    LIST_INIT(LIST_HEAD *head);
+    LIST_INIT(list);
 }
 
 /*
@@ -25,7 +25,8 @@ init_binding_list (LIST_HEAD *head)
  */
 
 address_binding *
-add_binding (LIST_HEAD *head, uint32_t address, uint8_t *cident, uint8_t cident_len)
+add_binding (binding_list *list, uint32_t address,
+	     uint8_t *cident, uint8_t cident_len)
 {
     // fill binding
 
@@ -37,21 +38,9 @@ add_binding (LIST_HEAD *head, uint32_t address, uint8_t *cident, uint8_t cident_
 
     // add to binding list
 
-    LIST_INSERT_HEAD(head, binding, pointers);
+    LIST_INSERT_HEAD(list, binding, pointers);
     
     return binding;
-}
-
-/*
- * Remove a binding.
- * 
- * The binding is also deallocated from memory.
- */
-
-void
-remove_binding (address_binding *binding)
-{
-    LIST_REMOVE(binding, pointers);
 }
 
 /*
@@ -60,36 +49,41 @@ remove_binding (address_binding *binding)
  */
 
 void
-update_bindings_statuses (LIST_HEAD *head)
+update_bindings_statuses (binding_list *list)
 {
-    LIST_FOREACH_SAFE(assoc, head, pointers, assoc_temp) {
-	if(assoc->assoc_time + assoc->lease_time < time()) { // update status of expired entries
-	    assoc->status = EXPIRED;
+    address_binding *binding, *binding_temp;
+    
+    LIST_FOREACH_SAFE(binding, list, pointers, binding_temp) {
+	if(binding->binding_time + binding->lease_time < time(NULL)) {
+	    binding->status = EXPIRED;
 	}
     }
 }
 
 /*
- * Search a static or dynamic association having the given client identifier.
+ * Search a static or dynamic binding having the given client identifier.
  *
- * If the is_static option is true a static association will be searched,
- * otherwise a dynamic one. If status is not zero, an association with that
+ * If the is_static option is true a static binding will be searched,
+ * otherwise a dynamic one. If status is not zero, an binding with that
  * status will be searched.
  */
 
-address_assoc *
-search_assoc (LIST_HEAD *head, uint8_t *cident, uint8_t cident_len, int is_static, int status)
+address_binding *
+search_binding (binding_list *list, uint8_t *cident, uint8_t cident_len,
+		int is_static, int status)
 {
-    LIST_FOREACH_SAFE(assoc, head, pointers, assoc_temp) {
+    address_binding *binding, *binding_temp;
+	
+    LIST_FOREACH_SAFE(binding, list, pointers, binding_temp) {
 
-	if((assoc->is_static == is_static || is_static == STATIC_OR_DYNAMIC) &&
-	   assoc->cident_len == cident_len &&
-	   memcmp(assoc->cident, cident, cident_len) == 0) {
+	if((binding->is_static == is_static || is_static == STATIC_OR_DYNAMIC) &&
+	   binding->cident_len == cident_len &&
+	   memcmp(binding->cident, cident, cident_len) == 0) {
 
 	    if(status == 0)
-		return assoc;
-	    else if(status == assoc->status)
-		return assoc;
+		return binding;
+	    else if(status == binding->status)
+		return binding;
 	}
     }
 
@@ -107,8 +101,8 @@ take_free_address (pool_indexes *indexes)
 {
     if(indexes->current <= indexes->last) {
 
-	uint32_t address = pool->current;	
-	pool->current = htonl(ntohl(pool->current) + 1);
+	uint32_t address = indexes->current;	
+	indexes->current = htonl(ntohl(indexes->current) + 1);
 	return address;
 
     } else
@@ -116,7 +110,7 @@ take_free_address (pool_indexes *indexes)
 }
 
 /*
- * Create a new dynamic association or reuse an expired one.
+ * Create a new dynamic binding or reuse an expired one.
  *
  * An attemp will be made to assign to the client the requested IP address
  * contained in the address option. An address equals to zero means that no 
@@ -125,46 +119,53 @@ take_free_address (pool_indexes *indexes)
  * If the dynamic pool of addresses is full a NULL pointer will be returned.
  */
 
-address_assoc *
-new_dynamic_assoc (LIST_HEAD *head, pool_indexes *indexes, uint32_t address, uint8_t *cident, uint8_t cident_len)
+address_binding *
+new_dynamic_binding (binding_list *list, pool_indexes *indexes, uint32_t address,
+		     uint8_t *cident, uint8_t cident_len)
 {
-    address_assoc *found_assoc = NULL;
+    address_binding *binding, *binding_temp;
+    address_binding *found_binding = NULL;
     int found = 0;
 
     if (address != 0) {
 
-	LIST_FOREACH_SAFE(assoc, head, pointers, assoc_temp) { // search a previous association using the requested IP address
+	LIST_FOREACH_SAFE(binding, list, pointers, binding_temp) {
+	    // search a previous binding using the requested IP address
 
-	    if(memcmp(assoc->address, address, 4) == 0) {
-		found_assoc = assoc;
+	    if(binding->address == address) {
+		found_binding = binding;
 		break;
 	    }
 	}
     }
 
-    if(found_assoc != NULL &&
-       !found_assoc->is_static &&
-       found_assoc->status != PENDING &&
-       found_assoc->status != ASSOCIATED) { // the requested IP address is available (reuse an expired association)
+    if(found_binding != NULL &&
+       !found_binding->is_static &&
+       found_binding->status != PENDING &&
+       found_binding->status != ASSOCIATED) {
 
-	return found_assoc;
+	// the requested IP address is available (reuse an expired association)
+	return found_binding;
 	
     } else {
 
-	/* the requested IP address is already in use, or no address has been requested,
-	   or the address requested has never been allocated (we do not support this last case
-	   and just return the next available address!). */
+	/* the requested IP address is already in use, or no address has been
+           requested, or the address requested has never been allocated
+           (we do not support this last case and just return the next
+           available address!). */
 
 	uint32_t address = take_free_address(indexes);
 
 	if(address != 0)
-	    return add_binding(head, address, cident, cident_len);
+	    return add_binding(list, address, cident, cident_len);
 
 	else { // search any previously assigned address which is expired
     
-	    LIST_FOREACH_SAFE(assoc, head, pointers, assoc_temp) {
-		if(!assoc->is_static && found_assoc->status != PENDING && found_assoc->status != ASSOCIATED)
-		    return assoc;
+	    LIST_FOREACH_SAFE(binding, list, pointers, binding_temp) {
+		if(!binding->is_static &&
+		   found_binding->status != PENDING &&
+		   found_binding->status != ASSOCIATED)
+		    return binding;
 	    }
 
 	    // if executions reach here no more addresses are available

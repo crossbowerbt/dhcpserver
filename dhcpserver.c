@@ -393,7 +393,7 @@ message_dispatcher (int s, struct sockaddr_in server_sock)
 
 	uint8_t type;
 
-	if((len = dhcp_recv_message(s, &request.hdr, &client_sock, &slen)) < 300) {
+	if((len = recvfrom(s, &request.hdr, &client_sock, &slen)) < 300) {
 	    continue; // TODO: check the magic number 300
 	}
 
