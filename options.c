@@ -320,6 +320,17 @@ parse_option (dhcp_option *opt, char *name, char *value)
 }
 
 /*
+ * Initialize an option list.
+ */
+
+void
+init_option_list (dhcp_option_list *list)
+{
+    //*list = STAILQ_HEAD_INITIALIZER(*list);
+    STAILQ_INIT(list);
+}
+
+/*
  * Given a list of options search an option having
  * the passed option id, and returns a pointer to it.
  *
@@ -377,7 +388,10 @@ parse_options_to_list (dhcp_option_list *list, dhcp_option *opts, size_t len)
 	if ((dhcp_option *)(((uint8_t *) opt) + 2 + opt->len) >= end) // the len field is too long
 	    return 0;
 
-	STAILQ_INSERT_TAIL(list, opt, pointers);
+	dhcp_option *nopt = calloc(1, sizeof(*nopt));
+	memcpy(nopt, opt, 2 + opt->len);
+	
+	STAILQ_INSERT_TAIL(list, nopt, pointers);
 
         opt = (dhcp_option *)(((uint8_t *) opt) + 2 + opt->len);
     }
@@ -429,8 +443,4 @@ serialize_option_list (dhcp_option_list *list, uint8_t *buf, size_t len)
     return p - buf;
 }
 
-void
-delete_option_list (dhcp_option_list *list)
-{
-    // TODO: maybe not necessary...
-}
+// TODO: free option list

@@ -26,6 +26,8 @@ void parse_args(int argc, char *argv[], address_pool *pool)
     int c;
 
     opterr = 0;
+
+    init_binding_list(&pool->bindings);
   
     while ((c = getopt (argc, argv, "a:l:m:o:p:")) != -1)
 	switch (c) {
@@ -101,7 +103,7 @@ void parse_args(int argc, char *argv[], address_pool *pool)
 		if((id = parse_option(option, name, value)) == 0)
 		    usage("error: invalid dhcp option specified.", 1);
 		
-		append_option(pool->options, option);
+		append_option(&pool->options, option);
 		
 		free(opt);
 		break;

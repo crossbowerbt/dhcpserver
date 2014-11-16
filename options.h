@@ -157,7 +157,11 @@ int parse_mac (char *s, void **p);
 
 /* Other prototypes */
 
+void init_option_list (dhcp_option_list *list);
 uint8_t parse_option (dhcp_option *option, char *name, char *value);
 dhcp_option * search_option (dhcp_option_list *list, uint8_t id);
+void append_option (dhcp_option_list *list, dhcp_option *opt);
+int parse_options_to_list (dhcp_option_list *list, dhcp_option *opts, size_t len);
+size_t serialize_option_list (dhcp_option_list *list, uint8_t *buf, size_t len);
 
 #endif

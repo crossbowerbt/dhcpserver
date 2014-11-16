@@ -47,7 +47,7 @@ str_mac (uint8_t *mac)
 {
     static char str[128];
 
-    sprintf(str, "%x:%x:%x:%x:%x:%x",
+    sprintf(str, "%.2x:%.2x:%.2x:%.2x:%.2x:%.2x",
 	    mac[0], mac[1], mac[2],
 	    mac[3], mac[4], mac[5]);
 
@@ -151,12 +151,12 @@ send_dhcp_reply	(int s, struct sockaddr_in *client_sock, dhcp_msg *reply)
 uint8_t
 expand_request (dhcp_msg *request, size_t len)
 {
-    STAILQ_INIT(&request->opts);
+    init_option_list(&request->opts);
     
     if (request->hdr.hlen < 1 || request->hdr.hlen > 16)
 	return 0;
 
-    if(parse_options_to_list(&request->opts, request->hdr.options,
+    if(parse_options_to_list(&request->opts, (dhcp_option *)request->hdr.options,
 			     len - DHCP_HEADER_SIZE) == 0)
 	return 0;
     
@@ -175,7 +175,7 @@ init_reply (dhcp_msg *request, dhcp_msg *reply)
 {
     memset(&reply->hdr, 0, sizeof(reply->hdr));
 
-    STAILQ_INIT(&reply->opts);
+    init_option_list(&reply->opts);
     
     reply->hdr.op = BOOTREPLY;
 
@@ -321,7 +321,7 @@ serve_dhcp_discover (dhcp_msg *request, dhcp_msg *reply)
 					  request->hdr.chaddr, request->hdr.hlen);
 
 	    if (binding == NULL) {
-		log_info("Can not offer an address to '%s', no address available.",
+		log_info("Can not offer an address to %s, no address available.",
 			 str_mac(request->hdr.chaddr));
 		
 		return 0;
@@ -437,7 +437,7 @@ message_dispatcher (int s, struct sockaddr_in server_sock)
 
 	uint8_t type;
 
-	if((len = recvfrom(s, &request.hdr, sizeof(request.hdr), 0, (struct sockaddr *)&client_sock, &slen)) < 300) {
+	if((len = recvfrom(s, &request.hdr, sizeof(request.hdr), 0, (struct sockaddr *)&client_sock, &slen)) < DHCP_HEADER_SIZE + 5) {
 	    continue; // TODO: check the magic number 300
 	}
 
@@ -456,19 +456,24 @@ message_dispatcher (int s, struct sockaddr_in server_sock)
 
 	case DHCP_DISCOVER:
             type = serve_dhcp_discover(&request, &reply);
+	    break;
 
 	case DHCP_REQUEST:
 	    type = serve_dhcp_request(&request, &reply);
-
+	    break;
+	    
 	case DHCP_DECLINE:
 	    type = serve_dhcp_decline(&request, &reply);
-
+	    break;
+	    
 	case DHCP_RELEASE:
 	    type = serve_dhcp_release(&request, &reply);
-
+	    break;
+	    
 	case DHCP_INFORM:
 	    type = serve_dhcp_inform(&request, &reply);
-
+	    break;
+	    
 	default:
 	    printf("%s.%u: request with invalid DHCP message type option\n",
 		   inet_ntoa(client_sock.sin_addr), ntohs(client_sock.sin_port));

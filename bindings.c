@@ -14,6 +14,7 @@
 void
 init_binding_list (binding_list *list)
 {
+    //*list = LIST_HEAD_INITIALIZER(*list);
     LIST_INIT(list);
 }
 
