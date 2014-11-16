@@ -83,13 +83,18 @@ add_arp_entry (int s, uint8_t *mac, uint32_t ip)
     struct arpreq ar;
     struct sockaddr_in *sock;
 
+    memset(&ar, 0, sizeof(ar));
+
+    /* add a proxy ARP entry for given pair */
+    
     sock = (struct sockaddr_in *) &ar.arp_pa;
     sock->sin_family = AF_INET;
     sock->sin_addr.s_addr = ip;
 
-    /* add a proxy ARP entry for given pair */
     memcpy(ar.arp_ha.sa_data, mac, 6);
-    ar.arp_flags = (ATF_PUBL | ATF_COM);
+    ar.arp_flags = ATF_COM; //(ATF_PUBL | ATF_COM);
+
+    strncpy(ar.arp_dev, pool.device, sizeof(ar.arp_dev));
     
     if (ioctl(s, SIOCSARP, (char *) &ar) < 0)  {
 	perror("error adding entry to arp table");
@@ -102,9 +107,13 @@ delete_arp_entry (int s, uint8_t *mac, uint32_t ip)
     struct arpreq ar;
     struct sockaddr_in *sock;
 
+    memset(&ar, 0, sizeof(ar));
+    
     sock = (struct sockaddr_in *) &ar.arp_pa;
     sock->sin_family = AF_INET;
     sock->sin_addr.s_addr = ip;
+
+    strncpy(ar.arp_dev, pool.device, sizeof(ar.arp_dev));
 
     if(ioctl(s, SIOCGARP, (char *) &ar) < 0)  {
 	if (errno != ENXIO) {
@@ -212,7 +221,7 @@ fill_requested_dhcp_options (dhcp_option *requested_opts, dhcp_option_list *repl
 
 int
 fill_dhcp_reply (dhcp_msg *request, dhcp_msg *reply,
-		 address_binding *assoc, uint8_t type)
+		 address_binding *binding, uint8_t type)
 {
     static dhcp_option type_opt, server_id_opt, lease_time_opt;
 
@@ -226,12 +235,13 @@ fill_dhcp_reply (dhcp_msg *request, dhcp_msg *reply,
     memcpy(server_id_opt.data, &pool.server_id, sizeof(pool.server_id));
     append_option(&reply->opts, &server_id_opt);
     
-    if(assoc != NULL) {
-	reply->hdr.yiaddr = htonl(assoc->address);
+    if(binding != NULL) {
+	reply->hdr.yiaddr = binding->address;
 
-	uint32_t lease_time = htonl(assoc->lease_time);
+	uint32_t lease_time = binding->status == PENDING ?
+	    htonl(pool.lease_time) : htonl(binding->lease_time);
 	lease_time_opt.id = IP_ADDRESS_LEASE_TIME;
-	lease_time_opt.len = 4;
+	leae_time_opt.len = 4;
 	memcpy(lease_time_opt.data, &lease_time, sizeof(lease_time));
 	append_option(&reply->opts, &lease_time_opt);
     }
@@ -327,6 +337,17 @@ serve_dhcp_discover (dhcp_msg *request, dhcp_msg *reply)
 		return 0;
 	    }
 
+	    log_info("Offer %s to %s, %s status %sexpired",
+		     str_ip(binding->address), str_mac(request->hdr.chaddr),
+		     str_status(binding->status),
+		     binding->binding_time + binding->lease_time < time(NULL) ? "" : "not ");
+	    
+	    if (binding->binding_time + binding->lease_time < time(NULL)) {
+		binding->status = PENDING;
+		binding->binding_time = time(NULL);
+		binding->lease_time = pool.pending_time;
+	    }
+
 	    return fill_dhcp_reply(request, reply, binding, DHCP_OFFER);
 	}
 
@@ -355,6 +376,8 @@ serve_dhcp_request (dhcp_msg *request, dhcp_msg *reply)
 		     str_ip(binding->address), str_mac(request->hdr.chaddr));
 
 	    binding->status = ASSOCIATED;
+	    binding->lease_time = pool.lease_time;
+	    
 	    return fill_dhcp_reply(request, reply, binding, DHCP_ACK);
 	
 	} else {
@@ -371,6 +394,8 @@ serve_dhcp_request (dhcp_msg *request, dhcp_msg *reply)
 		 str_ip(binding->address), str_mac(request->hdr.chaddr));
 		    
 	binding->status = EMPTY;
+	binding->lease_time = 0;
+	
 	return 0;
 
     }
@@ -449,7 +474,7 @@ message_dispatcher (int s, struct sockaddr_in server_sock)
 		      inet_ntoa(client_sock.sin_addr), ntohs(client_sock.sin_port));
 	    continue;
 	}
-	
+
 	init_reply(&request, &reply);
 
 	switch (type) {
@@ -500,7 +525,9 @@ main (int argc, char *argv[])
     /* Initialize global pool */
 
     memset(&pool, 0, sizeof(pool));
-    LIST_INIT(&pool.bindings);
+
+    init_binding_list(&pool.bindings);
+    init_option_list(&pool.options);
 
     /* Load configuration */
 

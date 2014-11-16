@@ -15,6 +15,7 @@
 #include <regex.h>
 
 #include "options.h"
+#include "logging.h"
 
 const uint8_t option_magic[4] = { 0x63, 0x82, 0x53, 0x63 };
 
@@ -296,14 +297,14 @@ parse_option (dhcp_option *opt, char *name, char *value)
     }
 
     if (id == 256) { // not found
-        error("Unsupported DHCP option '%s'", name);
+        log_error("Unsupported DHCP option '%s'", name);
         return 0;
     }
 
     f = dhcp_option_info[id].f;
 
     if (f == NULL) { // no parsing function available
-        error("Unsupported DHCP option '%s'", name);
+        log_error("Unsupported DHCP option '%s'", name);
         return 0;
     }
 
@@ -326,8 +327,7 @@ parse_option (dhcp_option *opt, char *name, char *value)
 void
 init_option_list (dhcp_option_list *list)
 {
-    //*list = STAILQ_HEAD_INITIALIZER(*list);
-    STAILQ_INIT(list);
+    SLIST_INIT(list);
 }
 
 /*
@@ -342,7 +342,7 @@ search_option (dhcp_option_list *list, uint8_t id)
 {
     dhcp_option *opt, *opt_temp;
     
-    STAILQ_FOREACH_SAFE(opt, list, pointers, opt_temp) {
+    SLIST_FOREACH_SAFE(opt, list, pointers, opt_temp) {
 
 	if(opt->id == id)
 	    return opt;
@@ -359,7 +359,7 @@ search_option (dhcp_option_list *list, uint8_t id)
 void
 append_option (dhcp_option_list *list, dhcp_option *opt)
 {
-    STAILQ_INSERT_TAIL(list, opt, pointers);
+    SLIST_INSERT_HEAD(list, opt, pointers);
 }
 
 /*
@@ -391,7 +391,7 @@ parse_options_to_list (dhcp_option_list *list, dhcp_option *opts, size_t len)
 	dhcp_option *nopt = calloc(1, sizeof(*nopt));
 	memcpy(nopt, opt, 2 + opt->len);
 	
-	STAILQ_INSERT_TAIL(list, nopt, pointers);
+	append_option(list, nopt);
 
         opt = (dhcp_option *)(((uint8_t *) opt) + 2 + opt->len);
     }
@@ -422,7 +422,7 @@ serialize_option_list (dhcp_option_list *list, uint8_t *buf, size_t len)
 
     dhcp_option *opt, *opt_temp;
     
-    STAILQ_FOREACH_SAFE(opt, list, pointers, opt_temp) {
+    SLIST_FOREACH_SAFE(opt, list, pointers, opt_temp) {
 
 	if (len <= 2 + opt->len)
 	    return 0;

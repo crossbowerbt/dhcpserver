@@ -27,9 +27,7 @@ void parse_args(int argc, char *argv[], address_pool *pool)
 
     opterr = 0;
 
-    init_binding_list(&pool->bindings);
-  
-    while ((c = getopt (argc, argv, "a:l:m:o:p:")) != -1)
+    while ((c = getopt (argc, argv, "a:d:l:m:o:p:s:")) != -1)
 	switch (c) {
 
 	case 'a': // parse IP address pool
@@ -61,6 +59,13 @@ void parse_args(int argc, char *argv[], address_pool *pool)
 		
 		break;
 	    }
+
+	case 'd': // network device to use
+	    {
+		strncpy(pool->device, optarg, sizeof(pool->device));
+		break;
+	    }
+	    
 	case 'l': // parse default lease time
 	    {
 		time_t *t;

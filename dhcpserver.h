@@ -24,6 +24,8 @@ struct address_pool {
     uint32_t netmask;   // network mask
     uint32_t gateway;   // network gateway
 
+    char device[16];    // network device to use
+
     pool_indexes indexes;  // used to delimitate a pool of available addresses
 
     time_t lease_time;      // default duration of a lease
