@@ -213,6 +213,7 @@ fill_requested_dhcp_options (dhcp_option *requested_opts, dhcp_option_list *repl
 	    
 	if(id[i] != 0) {
 	    dhcp_option *opt = search_option(&pool.options, id[i]);
+
 	    if(opt != NULL)
 		append_option(reply_opts, opt);
 	}
@@ -224,7 +225,7 @@ int
 fill_dhcp_reply (dhcp_msg *request, dhcp_msg *reply,
 		 address_binding *binding, uint8_t type)
 {
-    static dhcp_option type_opt, server_id_opt, lease_time_opt;
+    static dhcp_option type_opt, server_id_opt;
 
     type_opt.id = DHCP_MESSAGE_TYPE;
     type_opt.len = 1;
@@ -238,13 +239,6 @@ fill_dhcp_reply (dhcp_msg *request, dhcp_msg *reply,
     
     if(binding != NULL) {
 	reply->hdr.yiaddr = binding->address;
-
-	uint32_t lease_time = binding->status == PENDING ?
-	    htonl(pool.lease_time) : htonl(binding->lease_time);
-	lease_time_opt.id = IP_ADDRESS_LEASE_TIME;
-	lease_time_opt.len = 4;
-	memcpy(lease_time_opt.data, &lease_time, sizeof(lease_time));
-	append_option(&reply->opts, &lease_time_opt);
     }
     
     if (type != DHCP_NAK) {
@@ -509,6 +503,9 @@ message_dispatcher (int s, struct sockaddr_in server_sock)
 
 	if(type != 0)
 	    send_dhcp_reply(s, &client_sock, &reply);
+
+	delete_option_list(&request.opts);
+	delete_option_list(&reply.opts);
 
     }
 

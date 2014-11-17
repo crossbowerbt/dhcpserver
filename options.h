@@ -133,8 +133,8 @@ struct dhcp_option {
 
 typedef struct dhcp_option dhcp_option;
 
-typedef STAILQ_HEAD(dhcp_option_list, dhcp_option) DHCP_OPTION_LIST;
-typedef struct dhcp_option_list dhcp_option_list;
+typedef STAILQ_HEAD(dhcp_option_list_, dhcp_option) DHCP_OPTION_LIST;
+typedef struct dhcp_option_list_ dhcp_option_list;
 
 /* Value parsing functions:
  *
@@ -160,8 +160,10 @@ int parse_mac (char *s, void **p);
 void init_option_list (dhcp_option_list *list);
 uint8_t parse_option (dhcp_option *option, char *name, char *value);
 dhcp_option * search_option (dhcp_option_list *list, uint8_t id);
+void print_options (dhcp_option_list *list);
 void append_option (dhcp_option_list *list, dhcp_option *opt);
 int parse_options_to_list (dhcp_option_list *list, dhcp_option *opts, size_t len);
 size_t serialize_option_list (dhcp_option_list *list, uint8_t *buf, size_t len);
+void delete_option_list (dhcp_option_list *list);
 
 #endif

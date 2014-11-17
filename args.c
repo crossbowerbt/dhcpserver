@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#include <arpa/inet.h>
+
 #include "args.h"
 #include "options.h"
 
@@ -27,7 +29,7 @@ void parse_args(int argc, char *argv[], address_pool *pool)
 
     opterr = 0;
 
-    while ((c = getopt (argc, argv, "a:d:l:m:o:p:s:")) != -1)
+    while ((c = getopt (argc, argv, "a:d:o:p:s:")) != -1)
 	switch (c) {
 
 	case 'a': // parse IP address pool
@@ -66,30 +68,6 @@ void parse_args(int argc, char *argv[], address_pool *pool)
 		break;
 	    }
 	    
-	case 'l': // parse default lease time
-	    {
-		time_t *t;
-		
-		if(parse_long(optarg, (void **)&t) != 4)
-		    usage("error: invalid default lease time.", 1);
-		
-		pool->lease_time = *t;
-		free(t);
-		break;
-	    }
-	    
-	case 'm': // parse max lease time
-	    {
-		time_t *t;
-
-		if(parse_long(optarg, (void **)&t) != 4)
-		    usage("error: invalid max lease time.", 1);
-
-		pool->max_lease_time = *t;
-		free(t);
-		break;
-	    }
-	    
 	case 'o': // parse dhcp option
 	    {
 		uint8_t id;
@@ -105,11 +83,20 @@ void parse_args(int argc, char *argv[], address_pool *pool)
 		
 		dhcp_option *option = calloc(1, sizeof(*option));
 		
-		if((id = parse_option(option, name, value)) == 0)
-		    usage("error: invalid dhcp option specified.", 1);
+		if((id = parse_option(option, name, value)) == 0) {
+		    char msg[128];
+		    snprintf(msg, sizeof(msg),
+			     "error: invalid dhcp option specified: %s,%s",
+			     name, value);
+		    usage(msg, 1);
+		}
 		
 		append_option(&pool->options, option);
-		
+
+		if(option->id == IP_ADDRESS_LEASE_TIME)
+		    pool->lease_time = ntohl(*((uint32_t *)option->data));
+
+		free(option);
 		free(opt);
 		break;
 	    }

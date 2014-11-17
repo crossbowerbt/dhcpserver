@@ -8,15 +8,13 @@
 
 #define USAGE_TXT							\
     NAME " - " VERSION "\n"						\
-    "usage: [-a first,last] [-d device] [-l time] [-m time]\n"		\
-    "       [-o opt,value] [-p time] [-s mac,ip] server_address\n"
+    "usage: [-a first,last] [-d device] [-o opt,value]\n"		\
+    "       [-p time] [-s mac,ip] server_address\n"
 
 /* 
  * Usage description:
  *  -a: specify the pool of free addresses to allocate
  *  -d: network device name to use
- *  -l: specify the default lease time (in seconds)
- *  -m: specify the maximum lease time (in seconds)
  *  -o: specify a DHCP option for the pool
  *  -p: time in the pending state (in seconds)
  *  -s: specify a static binding

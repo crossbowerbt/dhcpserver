@@ -60,8 +60,8 @@ struct address_binding {
 
 typedef struct address_binding address_binding;
 
-typedef LIST_HEAD(binding_list, address_binding) BINDING_LIST_HEAD;
-typedef struct binding_list binding_list;
+typedef LIST_HEAD(binding_list_, address_binding) BINDING_LIST_HEAD;
+typedef struct binding_list_ binding_list;
 						 
 /*
  * Prototypes

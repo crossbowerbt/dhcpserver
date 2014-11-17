@@ -310,6 +310,9 @@ parse_option (dhcp_option *opt, char *name, char *value)
 
     len = f(value, (void **)&p); // parse the value
 
+    if(len == 0) // error parsing the value
+	return 0;
+
     // structure filling
     opt->id = id;
     opt->len = len;
@@ -341,25 +344,49 @@ dhcp_option *
 search_option (dhcp_option_list *list, uint8_t id)
 {
     dhcp_option *opt, *opt_temp;
-    
+
     STAILQ_FOREACH_SAFE(opt, list, pointers, opt_temp) {
 
 	if(opt->id == id)
 	    return opt;
 
     }
-
+    
     return NULL;
 }
 
 /*
+ * Print options in list.
+ */
+
+void
+print_options (dhcp_option_list *list)
+{
+    dhcp_option *opt, *opt_temp;
+    int i=0;
+
+    STAILQ_FOREACH_SAFE(opt, list, pointers, opt_temp) {
+
+	printf("options[%d]=%d (%s)\n", i++, opt->id,
+	       dhcp_option_info[opt->id].name);
+
+    }
+}
+
+
+/*
  * Append the provided option to the list.
+ *
+ * Always allocate new memory, that must be freed later...
  */
 
 void
 append_option (dhcp_option_list *list, dhcp_option *opt)
 {
-    STAILQ_INSERT_TAIL(list, opt, pointers);
+    dhcp_option *nopt = calloc(1, sizeof(*nopt));
+    memcpy(nopt, opt, 2 + opt->len);
+    
+    STAILQ_INSERT_TAIL(list, nopt, pointers);
 }
 
 /*
@@ -385,13 +412,10 @@ parse_options_to_list (dhcp_option_list *list, dhcp_option *opts, size_t len)
     while (opt < end  &&
 	   opt->id != END) { // TODO: check also valid option sizes
 
-	if ((dhcp_option *)(((uint8_t *) opt) + 2 + opt->len) >= end) // the len field is too long
-	    return 0;
+	if ((dhcp_option *)(((uint8_t *) opt) + 2 + opt->len) >= end)
+	    return 0; // the len field is too long
 
-	dhcp_option *nopt = calloc(1, sizeof(*nopt));
-	memcpy(nopt, opt, 2 + opt->len);
-	
-	append_option(list, nopt);
+	append_option(list, opt);
 
         opt = (dhcp_option *)(((uint8_t *) opt) + 2 + opt->len);
     }
@@ -443,4 +467,22 @@ serialize_option_list (dhcp_option_list *list, uint8_t *buf, size_t len)
     return p - buf;
 }
 
-// TODO: free option list
+/*
+ * Delete an option list and deallocate its memory.
+ * Deallocate even the list elements.
+ */
+
+void
+delete_option_list (dhcp_option_list *list)
+{
+    dhcp_option *opt = STAILQ_FIRST(list);
+    dhcp_option *tmp;
+    
+    while (opt != NULL) {
+	tmp = STAILQ_NEXT(opt, pointers);
+	free(opt);
+	opt = tmp;
+     }
+    
+    STAILQ_INIT(list);
+}

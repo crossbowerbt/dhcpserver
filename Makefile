@@ -1,5 +1,5 @@
 CC     = gcc
-CFLAGS = -Wall
+CFLAGS = -Wall -ggdb
 OBJS   = args.o bindings.o dhcpserver.o options.o
 
 %.o: %.c
