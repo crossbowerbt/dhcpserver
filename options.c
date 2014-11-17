@@ -327,7 +327,7 @@ parse_option (dhcp_option *opt, char *name, char *value)
 void
 init_option_list (dhcp_option_list *list)
 {
-    SLIST_INIT(list);
+    STAILQ_INIT(list);
 }
 
 /*
@@ -342,7 +342,7 @@ search_option (dhcp_option_list *list, uint8_t id)
 {
     dhcp_option *opt, *opt_temp;
     
-    SLIST_FOREACH_SAFE(opt, list, pointers, opt_temp) {
+    STAILQ_FOREACH_SAFE(opt, list, pointers, opt_temp) {
 
 	if(opt->id == id)
 	    return opt;
@@ -359,7 +359,7 @@ search_option (dhcp_option_list *list, uint8_t id)
 void
 append_option (dhcp_option_list *list, dhcp_option *opt)
 {
-    SLIST_INSERT_HEAD(list, opt, pointers);
+    STAILQ_INSERT_TAIL(list, opt, pointers);
 }
 
 /*
@@ -422,7 +422,7 @@ serialize_option_list (dhcp_option_list *list, uint8_t *buf, size_t len)
 
     dhcp_option *opt, *opt_temp;
     
-    SLIST_FOREACH_SAFE(opt, list, pointers, opt_temp) {
+    STAILQ_FOREACH_SAFE(opt, list, pointers, opt_temp) {
 
 	if (len <= 2 + opt->len)
 	    return 0;

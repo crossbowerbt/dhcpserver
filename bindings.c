@@ -128,7 +128,6 @@ new_dynamic_binding (binding_list *list, pool_indexes *indexes, uint32_t address
 {
     address_binding *binding, *binding_temp;
     address_binding *found_binding = NULL;
-    int found = 0;
 
     if (address != 0) {
 

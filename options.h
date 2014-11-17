@@ -128,12 +128,12 @@ struct dhcp_option {
     uint8_t len;       // option length
     uint8_t data[256]; // option data
 
-    SLIST_ENTRY(dhcp_option) pointers; // pointers, see queue(3)
+    STAILQ_ENTRY(dhcp_option) pointers; // pointers, see queue(3)
 };
 
 typedef struct dhcp_option dhcp_option;
 
-typedef SLIST_HEAD(dhcp_option_list, dhcp_option) DHCP_OPTION_LIST;
+typedef STAILQ_HEAD(dhcp_option_list, dhcp_option) DHCP_OPTION_LIST;
 typedef struct dhcp_option_list dhcp_option_list;
 
 /* Value parsing functions:

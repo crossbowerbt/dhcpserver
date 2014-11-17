@@ -6,6 +6,7 @@
 #include <time.h>
 #include <ctype.h>
 #include <regex.h>
+#include <unistd.h>
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -241,7 +242,7 @@ fill_dhcp_reply (dhcp_msg *request, dhcp_msg *reply,
 	uint32_t lease_time = binding->status == PENDING ?
 	    htonl(pool.lease_time) : htonl(binding->lease_time);
 	lease_time_opt.id = IP_ADDRESS_LEASE_TIME;
-	leae_time_opt.len = 4;
+	lease_time_opt.len = 4;
 	memcpy(lease_time_opt.data, &lease_time, sizeof(lease_time));
 	append_option(&reply->opts, &lease_time_opt);
     }
@@ -517,7 +518,6 @@ int
 main (int argc, char *argv[])
 {
     int s;
-    uint16_t port;
     struct protoent *pp;
     struct servent *ss;
     struct sockaddr_in server_sock;
