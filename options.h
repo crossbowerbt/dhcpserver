@@ -3,7 +3,8 @@
 
 #include <stdint.h>
 #include <time.h>
-#include <sys/queue.h>
+
+#include "queue.h"
 
 /*
  * Code ID of DHCP and BOOTP options 
@@ -128,12 +129,12 @@ struct dhcp_option {
     uint8_t len;       // option length
     uint8_t data[256]; // option data
 
-    STAILQ_ENTRY(dhcp_option) pointers; // pointers, see queue(3)
+    TAILQ_ENTRY(dhcp_option) pointers; // pointers, see queue(3)
 };
 
 typedef struct dhcp_option dhcp_option;
 
-typedef STAILQ_HEAD(dhcp_option_list_, dhcp_option) DHCP_OPTION_LIST;
+typedef TAILQ_HEAD(dhcp_option_list_, dhcp_option) DHCP_OPTION_LIST;
 typedef struct dhcp_option_list_ dhcp_option_list;
 
 /* Value parsing functions:

@@ -3,8 +3,8 @@
 
 #include <stdint.h>
 #include <time.h>
-#include <sys/queue.h>
 
+#include "queue.h"
 #include "dhcp.h"
 #include "options.h"
 #include "bindings.h"
