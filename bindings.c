@@ -2,9 +2,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <sys/queue.h>
 #include <arpa/inet.h>
 
+#include "queue.h"
 #include "bindings.h"
 
 /*
@@ -14,7 +14,6 @@
 void
 init_binding_list (binding_list *list)
 {
-    //*list = LIST_HEAD_INITIALIZER(*list);
     LIST_INIT(list);
 }
 

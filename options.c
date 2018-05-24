@@ -2,7 +2,6 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <sys/queue.h>
 #include <netdb.h>
 
 #include <stdio.h>
@@ -14,6 +13,7 @@
 #include <ctype.h>
 #include <regex.h>
 
+#include "queue.h"
 #include "options.h"
 #include "logging.h"
 
@@ -330,7 +330,7 @@ parse_option (dhcp_option *opt, char *name, char *value)
 void
 init_option_list (dhcp_option_list *list)
 {
-    STAILQ_INIT(list);
+    TAILQ_INIT(list);
 }
 
 /*
@@ -345,7 +345,7 @@ search_option (dhcp_option_list *list, uint8_t id)
 {
     dhcp_option *opt, *opt_temp;
 
-    STAILQ_FOREACH_SAFE(opt, list, pointers, opt_temp) {
+    TAILQ_FOREACH_SAFE(opt, list, pointers, opt_temp) {
 
 	if(opt->id == id)
 	    return opt;
@@ -365,7 +365,7 @@ print_options (dhcp_option_list *list)
     dhcp_option *opt, *opt_temp;
     int i=0;
 
-    STAILQ_FOREACH_SAFE(opt, list, pointers, opt_temp) {
+    TAILQ_FOREACH_SAFE(opt, list, pointers, opt_temp) {
 
 	printf("options[%d]=%d (%s)\n", i++, opt->id,
 	       dhcp_option_info[opt->id].name);
@@ -386,7 +386,7 @@ append_option (dhcp_option_list *list, dhcp_option *opt)
     dhcp_option *nopt = calloc(1, sizeof(*nopt));
     memcpy(nopt, opt, 2 + opt->len);
     
-    STAILQ_INSERT_TAIL(list, nopt, pointers);
+    TAILQ_INSERT_TAIL(list, nopt, pointers);
 }
 
 /*
@@ -446,7 +446,7 @@ serialize_option_list (dhcp_option_list *list, uint8_t *buf, size_t len)
 
     dhcp_option *opt, *opt_temp;
     
-    STAILQ_FOREACH_SAFE(opt, list, pointers, opt_temp) {
+    TAILQ_FOREACH_SAFE(opt, list, pointers, opt_temp) {
 
 	if (len <= 2 + opt->len)
 	    return 0;
@@ -475,14 +475,14 @@ serialize_option_list (dhcp_option_list *list, uint8_t *buf, size_t len)
 void
 delete_option_list (dhcp_option_list *list)
 {
-    dhcp_option *opt = STAILQ_FIRST(list);
+    dhcp_option *opt = TAILQ_FIRST(list);
     dhcp_option *tmp;
     
     while (opt != NULL) {
-	tmp = STAILQ_NEXT(opt, pointers);
+	tmp = TAILQ_NEXT(opt, pointers);
 	free(opt);
 	opt = tmp;
      }
     
-    STAILQ_INIT(list);
+    TAILQ_INIT(list);
 }
