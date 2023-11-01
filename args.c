@@ -138,11 +138,10 @@ void parse_args(int argc, char *argv[], address_pool *pool)
 		free(ip);
 		free(hw);
 		free(opt);
+		break;
 	    }
 	    
 	case '?':
-	    usage(NULL, 1);
-
 	default:
 	    usage(NULL, 1);
 	}
